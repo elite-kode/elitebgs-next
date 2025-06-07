@@ -1,0 +1,27 @@
+{
+  "allowed": [
+    {
+      "softwareName": "^E:D Market Connector.*$",
+      "softwareVersion": ">=4.0.0"
+    },
+    {
+      "softwareName": "^EDDiscovery$",
+      "softwareVersion": ">=12.0.0.0"
+    },
+    {
+      "softwareName": "^Garuds Test$",
+      "softwareVersion": "^1.0.0"
+    }
+  ],
+  "disallowed": [
+    {
+      "softwareName": "^ed-ibe (api)$",
+      "allVersions": true
+    },
+    {
+      "softwareName": "^ocellus - elite: dangerous assistant$",
+      "allVersions": false,
+      "softwareVersion": "0.0.1 - 10.0.0"
+    }
+  ]
+}

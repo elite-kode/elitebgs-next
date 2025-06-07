@@ -1,0 +1,23 @@
+{
+  "name": "@elitebgs/elitebgs",
+  "version": "1.0.0",
+  "description": "BGS tracking tool for Elite Dangerous",
+  "private": true,
+  "homepage": "https://github.com/elite-kode/elitebgs-next#readme",
+  "bugs": {
+    "url": "https://github.com/elite-kode/elitebgs-next/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elite-kode/elitebgs-next.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Sayak Mukhopadhyay",
+  "workspaces": [
+    "api-server",
+    "eddn-listener",
+    "eddn-worker",
+    "front-end",
+    "types"
+  ]
+}
