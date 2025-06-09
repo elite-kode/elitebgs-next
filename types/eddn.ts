@@ -27,7 +27,7 @@ export type FSDJump = EDDNBase & {
     timestamp: string
     SystemAddress: string
     StarSystem: string
-    StarPos: string[]
+    StarPos: number[]
     SystemAllegiance: string
     SystemEconomy: string
     SystemSecondEconomy: string

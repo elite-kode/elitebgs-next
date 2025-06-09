@@ -1,5 +1,6 @@
 import { Sequelize } from 'sequelize'
 import { connect, Mongoose } from 'mongoose'
+import { SystemInit } from './models/system.ts'
 
 export class DB {
   sequelize: Sequelize
@@ -45,6 +46,7 @@ export class DB {
   }
 
   private loadPGModels() {
+    SystemInit(this.sequelize)
     // GuildInit(this.sequelize)
     // BankInit(this.sequelize)
     // UserInit(this.sequelize)

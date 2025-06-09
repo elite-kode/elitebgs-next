@@ -7,16 +7,23 @@ import softwareGuards from './eddn-software-guards.json' with { type: 'json' }
 export class EDDN {
   static async handleMessage(message: EDDNBase) {
     let processed: boolean = false
+    let processingErrors: string[] = []
     if (message.$schemaRef === Journal.getSchema()) {
       if (parseFloat(message.header.gameversion) < 4) {
-        console.warn(`Received message from legacy game version: ${message.header.gameversion}. Skipping processing.`)
+        processingErrors.push(
+          `Received message from legacy game version: ${message.header.gameversion}. Skipping processing.`,
+        )
       } else if (!this.handleMessageSoftware(message.header.softwareName, message.header.softwareVersion)) {
-        console.warn(`Received message from disallowed software: ${message.header.softwareName}. Skipping processing.`)
+        processingErrors.push(
+          `Received message from disallowed software: ${message.header.softwareName}. Skipping processing.`,
+        )
       } else {
-        processed = await Journal.trackSystem(message as JournalMessage)
+        ;({ processed, processingErrors } = await Journal.trackSystem(message as JournalMessage))
       }
+    } else {
+      processingErrors = ['Received message not from the Journal schema. Skipping processing.']
     }
-    await EDDN.saveMessage(message.$schemaRef, processed, message)
+    await EDDN.saveMessage(message.$schemaRef, processed, processingErrors, message)
   }
 
   private static handleMessageSoftware(softwareName: string, softwareVersion: string): boolean {
@@ -47,10 +54,16 @@ export class EDDN {
     })
   }
 
-  private static async saveMessage(schemaRef: string, processed: boolean, message: unknown) {
+  private static async saveMessage(
+    schemaRef: string,
+    processed: boolean,
+    processingErrors: string[],
+    message: unknown,
+  ) {
     const eddn = new eddnModel({
       schemaRef,
       processed,
+      processingErrors,
       message,
     })
 
