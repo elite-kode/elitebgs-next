@@ -1,4 +1,10 @@
 import { type FSDJump, type JournalMessage, JournalEvents } from '@elitebgs/types/eddn.ts'
+import { System } from '../db/models/system.ts'
+
+export type TrackSystemResponse = {
+  processed: boolean
+  processingErrors: string[]
+}
 
 /** Responsible for handling EDDN journal messages. */
 export class Journal {
@@ -18,20 +24,43 @@ export class Journal {
    * Tracks the system from the journal message. This method is called when a journal message is received and matches
    * the schema for journal messages.
    */
-  static async trackSystem(message: JournalMessage): Promise<boolean> {
+  static async trackSystem(message: JournalMessage): Promise<TrackSystemResponse> {
     if (message.message.event !== JournalEvents.FSDJump && message.message.event !== JournalEvents.Location) {
-      return false // Only track FSDJump and Location events
+      return { processed: false, processingErrors: ['Not a FSDJump or Location event. Skipping processing.'] } // Only track FSDJump and Location events
     }
 
-    let messageBody = (message as FSDJump).message
+    const messageBody = (message as FSDJump).message
 
-    if (!(await this.checkMessageJump(messageBody))) {
-      return false // Skip processing if the message contains data invalid for EliteBGS
+    try {
+      const errors = await this.checkMessageJump(messageBody)
+
+      // Skip processing if the message contains data invalid for EliteBGS
+      if (errors.length > 0) {
+        return { processed: false, processingErrors: errors }
+      }
+    } catch (err) {
+      return {
+        processed: false,
+        processingErrors: [`Error occurred while validating message. Skipping processing. Error: ${err}`],
+      }
     }
 
-    messageBody = this.coerceMessage(messageBody)
+    // messageBody = this.coerceMessage(messageBody)
 
-    return false // Placeholder for actual tracking logic
+    const system = await System.create({
+      starSystem: messageBody.StarSystem,
+      starSystemLower: messageBody.StarSystem.toLowerCase(),
+      systemAddress: messageBody.SystemAddress,
+      starPos: {
+        type: 'Point',
+        coordinates: messageBody.StarPos,
+        crs: { type: 'name', properties: { name: '0' } },
+      },
+    })
+
+
+
+    return { processed: true, processingErrors: [] }
   }
 
   /**
@@ -39,68 +68,68 @@ export class Journal {
    * indicating that the message should not be processed.
    */
   private static async checkMessageJump(message: FSDJump['message']) {
+    const errors: string[] = []
     if (new Date(message.timestamp) < new Date('2017-10-07T00:00:00Z') || new Date(message.timestamp) > new Date()) {
-      console.warn(`Received FSDJump message with invalid timestamp: ${message.timestamp}. Skipping processing.`)
-      return false
+      errors.push(`Received FSDJump message with invalid timestamp: ${message.timestamp}. Skipping processing.`)
     }
-    if (!message.StarSystem) {
-      console.warn('Received FSDJump message without StarSystem. Skipping processing.')
-      return false
+    if (message.StarSystem === undefined) {
+      errors.push('Received FSDJump message without StarSystem. Skipping processing.')
     }
-    if (!message.SystemAddress) {
-      console.warn(
+    if (message.SystemAddress === undefined) {
+      errors.push(
         `Received FSDJump message without SystemAddress. Skipping processing. StarSystem: ${message.StarSystem}`,
       )
-      return false
     }
-    if (!message.timestamp) {
-      console.warn(`Received FSDJump message without timestamp. Skipping processing. StarSystem: ${message.StarSystem}`)
-      return false
+    if (message.timestamp === undefined) {
+      errors.push(`Received FSDJump message without timestamp. Skipping processing. StarSystem: ${message.StarSystem}`)
     }
-    if (!message.StarPos) {
-      console.warn(`Received FSDJump message without StarPos. Skipping processing. StarSystem: ${message.StarSystem}`)
-      return false
+    if (message.StarPos === undefined) {
+      errors.push(`Received FSDJump message without StarPos. Skipping processing. StarSystem: ${message.StarSystem}`)
     }
-    if (!message.SystemSecurity) {
-      console.warn(
+    if (message.SystemSecurity === undefined) {
+      errors.push(
         `Received FSDJump message without SystemSecurity. Skipping processing. StarSystem: ${message.StarSystem}`,
       )
-      return false
     }
-    if (!message.SystemGovernment) {
-      console.warn(
+    if (message.SystemGovernment === undefined) {
+      errors.push(
         `Received FSDJump message without SystemGovernment. Skipping processing. StarSystem: ${message.StarSystem}`,
       )
-      return false
     }
-    if (!message.SystemAllegiance) {
-      console.warn(
+    if (message.SystemAllegiance === undefined) {
+      errors.push(
         `Received FSDJump message without SystemAllegiance. Skipping processing. StarSystem: ${message.StarSystem}`,
       )
-      return false
     }
-    if (!message.SystemEconomy) {
-      console.warn(
+    if (message.SystemEconomy === undefined) {
+      errors.push(
         `Received FSDJump message without SystemEconomy. Skipping processing. StarSystem: ${message.StarSystem}`,
       )
-      return false
     }
-    return true
+    if (message.SystemSecondEconomy === undefined) {
+      errors.push(
+        `Received FSDJump message without SystemSecondEconomy. Skipping processing. StarSystem: ${message.StarSystem}`,
+      )
+    }
+    if (message.Population === undefined) {
+      errors.push(`Received FSDJump message without Population. Skipping processing. StarSystem: ${message.StarSystem}`)
+    }
+    return errors
   }
 
-  private static coerceMessage(message: FSDJump['message']): FSDJump['message'] {
-    if (!message.SystemFaction.FactionState) {
-      message.SystemFaction.FactionState = 'None'
-    }
-
-    if (!message.Population) {
-      message.Population = 0
-    }
-
-    if (!message.Conflicts) {
-      message.Conflicts = []
-    }
-
-    return message
-  }
+  // private static coerceMessage(message: FSDJump['message']): FSDJump['message'] {
+  //   if (!message.SystemFaction.FactionState) {
+  //     message.SystemFaction.FactionState = 'None'
+  //   }
+  //
+  //   if (!message.Population) {
+  //     message.Population = 0
+  //   }
+  //
+  //   if (!message.Conflicts) {
+  //     message.Conflicts = []
+  //   }
+  //
+  //   return message
+  // }
 }

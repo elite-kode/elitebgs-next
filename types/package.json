@@ -1,3 +1,6 @@
 {
-  "name": "@elitebgs/types"
+  "name": "@elitebgs/types",
+  "devDependencies": {
+    "@types/geojson": "^7946.0.16"
+  }
 }

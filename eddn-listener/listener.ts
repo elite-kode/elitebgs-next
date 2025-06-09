@@ -14,9 +14,22 @@ export class Listener {
   constructor() {
     this.sock = new Subscriber()
     this.connect()
+    this.setupAxiosInstance()
+  }
+
+  private setupAxiosInstance() {
     this.axiosInstance = axios.create({
       baseURL: process.env.WORKER_URL,
     })
+
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        return response
+      },
+      (err) => {
+        console.error(`Error while calling worker: ${err}`)
+      },
+    )
   }
 
   /** Connects to the EDDN message and subscribes to all messages. */
