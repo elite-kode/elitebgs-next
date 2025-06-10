@@ -2,13 +2,16 @@ import express, { type Express } from 'express'
 import { Server, IncomingMessage, ServerResponse } from 'http'
 import { createServer } from 'node:http'
 import { EDDN } from './eddn.ts'
+import { Sequelize } from 'sequelize'
 
 export class App {
   app: Express
   port: number
   server: Server<typeof IncomingMessage, typeof ServerResponse>
+  sequelize: Sequelize
 
-  constructor() {
+  constructor(sequelize: Sequelize) {
+    this.sequelize = sequelize
     this.app = express()
     this.app.use(express.json())
     this.app.use(express.urlencoded({ extended: true }))
@@ -62,11 +65,11 @@ export class App {
   }
 
   routes() {
-    this.app.post('/', this.handleMessage)
+    this.app.post('/', this.handleMessage.bind(this))
   }
 
   handleMessage(req, res) {
-    EDDN.handleMessage(req.body)
+    EDDN.handleMessage(req.body, this.sequelize)
     res.status(202).send({
       status: 'success',
     })

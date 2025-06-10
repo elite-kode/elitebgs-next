@@ -25,7 +25,7 @@ export type FSDJump = EDDNBase & {
   message: {
     event: JournalEvents.FSDJump
     timestamp: string
-    SystemAddress: string
+    SystemAddress: number
     StarSystem: string
     StarPos: number[]
     SystemAllegiance: string

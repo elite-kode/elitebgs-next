@@ -1,6 +1,7 @@
 import { Sequelize } from 'sequelize'
 import { connect, Mongoose } from 'mongoose'
-import { SystemInit } from './models/system.ts'
+import { Systems, SystemsInit } from './models/systems.ts'
+import { SystemAliases, SystemAliasesInit } from './models/system_aliases.ts'
 
 export class DB {
   sequelize: Sequelize
@@ -46,7 +47,13 @@ export class DB {
   }
 
   private loadPGModels() {
-    SystemInit(this.sequelize)
+    SystemsInit(this.sequelize)
+    SystemAliasesInit(this.sequelize)
+
+    Systems.hasMany(SystemAliases, {
+      foreignKey: 'systemId',
+    })
+    SystemAliases.belongsTo(Systems)
     // GuildInit(this.sequelize)
     // BankInit(this.sequelize)
     // UserInit(this.sequelize)

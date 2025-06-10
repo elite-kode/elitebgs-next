@@ -1,5 +1,6 @@
 import { type FSDJump, type JournalMessage, JournalEvents } from '@elitebgs/types/eddn.ts'
-import { System } from '../db/models/system.ts'
+import { Sequelize } from 'sequelize'
+import { createSystem, findSystem, updateSystemName } from '../db/repository/systems.ts'
 
 export type TrackSystemResponse = {
   processed: boolean
@@ -24,7 +25,7 @@ export class Journal {
    * Tracks the system from the journal message. This method is called when a journal message is received and matches
    * the schema for journal messages.
    */
-  static async trackSystem(message: JournalMessage): Promise<TrackSystemResponse> {
+  static async trackSystem(message: JournalMessage, sequelize: Sequelize): Promise<TrackSystemResponse> {
     if (message.message.event !== JournalEvents.FSDJump && message.message.event !== JournalEvents.Location) {
       return { processed: false, processingErrors: ['Not a FSDJump or Location event. Skipping processing.'] } // Only track FSDJump and Location events
     }
@@ -47,18 +48,32 @@ export class Journal {
 
     // messageBody = this.coerceMessage(messageBody)
 
-    const system = await System.create({
-      starSystem: messageBody.StarSystem,
-      starSystemLower: messageBody.StarSystem.toLowerCase(),
-      systemAddress: messageBody.SystemAddress,
-      starPos: {
-        type: 'Point',
-        coordinates: messageBody.StarPos,
-        crs: { type: 'name', properties: { name: '0' } },
-      },
-    })
+    try {
+      await sequelize.transaction(async (transaction) => {
+        let system = await findSystem(messageBody.SystemAddress, transaction)
 
-
+        if (!system) {
+          console.debug(`System ${messageBody.StarSystem} doesn't exist. Creating...`)
+          system = await createSystem(messageBody, transaction)
+        } else {
+          if (messageBody.StarSystem !== system.starSystem) {
+            const systemAliases = await system.getSystemAliases()
+            if (!systemAliases.some((alias) => alias.alias === messageBody.StarSystem.toLowerCase())) {
+              await system.createSystemAlias({
+                alias: system.starSystem,
+                aliasLower: system.starSystemLower,
+              })
+              await updateSystemName(system.id, messageBody.StarSystem, transaction)
+            }
+          }
+        }
+      })
+    } catch (err) {
+      return {
+        processed: false,
+        processingErrors: [`Error occurred while in DB operation. Skipping processing. Error: ${err}`],
+      }
+    }
 
     return { processed: true, processingErrors: [] }
   }
