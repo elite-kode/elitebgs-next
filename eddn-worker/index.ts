@@ -7,4 +7,4 @@ config()
 const db = new DB()
 await db.connect()
 
-new App()
+new App(db.sequelize)

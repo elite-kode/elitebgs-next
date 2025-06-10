@@ -3,9 +3,10 @@ import type { EDDNBase, JournalMessage } from '@elitebgs/types/eddn.ts'
 import { EDDN as eddnModel } from './db/models/eddn.ts'
 import { Journal } from './elitebgs/journal.ts'
 import softwareGuards from './eddn-software-guards.json' with { type: 'json' }
+import { Sequelize } from 'sequelize'
 
 export class EDDN {
-  static async handleMessage(message: EDDNBase) {
+  static async handleMessage(message: EDDNBase, sequelize: Sequelize) {
     let processed: boolean = false
     let processingErrors: string[] = []
     if (message.$schemaRef === Journal.getSchema()) {
@@ -18,7 +19,7 @@ export class EDDN {
           `Received message from disallowed software: ${message.header.softwareName}. Skipping processing.`,
         )
       } else {
-        ;({ processed, processingErrors } = await Journal.trackSystem(message as JournalMessage))
+        ;({ processed, processingErrors } = await Journal.trackSystem(message as JournalMessage, sequelize))
       }
     } else {
       processingErrors = ['Received message not from the Journal schema. Skipping processing.']
