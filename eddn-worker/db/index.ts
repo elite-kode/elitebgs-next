@@ -2,6 +2,12 @@ import { Sequelize } from 'sequelize'
 import { connect, Mongoose } from 'mongoose'
 import { Systems, SystemsInit } from './models/systems.ts'
 import { SystemAliases, SystemAliasesInit } from './models/system_aliases.ts'
+import { SystemHistories, SystemHistoriesInit } from './models/system_histories.ts'
+import { Factions, FactionsInit } from './models/factions.ts'
+import { SystemFactions, SystemFactionsInit } from './models/system_factions.ts'
+import { ActiveStates, ActiveStatesInit } from './models/active_states.ts'
+import { PendingStates, PendingStatesInit } from './models/pending_states.ts'
+import { RecoveringStates, RecoveringStatesInit } from './models/recovering_states.ts'
 
 export class DB {
   sequelize: Sequelize
@@ -49,21 +55,46 @@ export class DB {
   private loadPGModels() {
     SystemsInit(this.sequelize)
     SystemAliasesInit(this.sequelize)
+    SystemHistoriesInit(this.sequelize)
+    FactionsInit(this.sequelize)
+    SystemFactionsInit(this.sequelize)
+    ActiveStatesInit(this.sequelize)
+    PendingStatesInit(this.sequelize)
+    RecoveringStatesInit(this.sequelize)
 
     Systems.hasMany(SystemAliases, {
       foreignKey: 'systemId',
     })
     SystemAliases.belongsTo(Systems)
-    // GuildInit(this.sequelize)
-    // BankInit(this.sequelize)
-    // UserInit(this.sequelize)
-    // UserBankInit(this.sequelize)
-    //
-    // Guild.hasOne(Bank, { foreignKey: { name: 'guildId', allowNull: false }, onDelete: 'CASCADE', onUpdate: 'CASCADE' })
-    // Bank.belongsTo(Guild)
-    //
-    // User.belongsToMany(Bank, { through: UserBank, foreignKey: 'userId' })
-    // Bank.belongsToMany(User, { through: UserBank, foreignKey: 'bankId' })
+
+    Systems.hasMany(SystemHistories, {
+      foreignKey: 'systemId',
+    })
+    SystemHistories.belongsTo(Systems)
+
+    Systems.belongsToMany(Factions, {
+      through: SystemFactions,
+      foreignKey: 'systemId',
+    })
+    Factions.belongsToMany(Systems, {
+      through: SystemFactions,
+      foreignKey: 'factionId',
+    })
+
+    SystemFactions.hasMany(ActiveStates, {
+      foreignKey: 'systemFactionId',
+    })
+    ActiveStates.belongsTo(SystemFactions)
+
+    SystemFactions.hasMany(PendingStates, {
+      foreignKey: 'systemFactionId',
+    })
+    PendingStates.belongsTo(SystemFactions)
+
+    SystemFactions.hasMany(RecoveringStates, {
+      foreignKey: 'systemFactionId',
+    })
+    RecoveringStates.belongsTo(SystemFactions)
   }
 
   private async sync() {

@@ -31,11 +31,11 @@ export class EDDN {
     if (
       softwareGuards.disallowed.some((element) => {
         const match = new RegExp(element.softwareName).test(softwareName)
-        // If the software is disallowed for all versions, don't allow it
+        // If the software is disallowed for all versions, don't allow it.
         if (match && element.allVersions) {
           return true
         }
-        // If the software is disallowed for specific versions, don't allow it
+        // If the software is disallowed for specific versions, don't allow it.
         if (match && element.softwareVersion !== '0.0.0') {
           return satisfies(softwareVersion, element.softwareVersion, true)
         }
@@ -46,11 +46,11 @@ export class EDDN {
     }
     return !!softwareGuards.allowed.some((element) => {
       const match = new RegExp(element.softwareName).test(softwareName)
-      // If the software is not in the allowed list, don't allow it
+      // If the software is not in the allowed list, don't allow it.
       if (!match) {
         return false
       }
-      // If the software version is allowed, allow it. else, don't
+      // If the software version is allowed, allow it, else, don't.
       return satisfies(softwareVersion, element.softwareVersion, true)
     })
   }

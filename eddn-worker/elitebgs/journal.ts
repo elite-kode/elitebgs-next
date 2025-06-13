@@ -1,6 +1,7 @@
-import { type FSDJump, type JournalMessage, JournalEvents } from '@elitebgs/types/eddn.ts'
-import { Sequelize } from 'sequelize'
-import { createSystem, findSystem, updateSystemName } from '../db/repository/systems.ts'
+import { type FSDJump, JournalEvents, type JournalMessage } from '@elitebgs/types/eddn.ts'
+import { Op, Sequelize, Transaction } from 'sequelize'
+import { Systems } from '../db/models/systems.ts'
+import { SystemAliases } from '../db/models/system_aliases.ts'
 
 export type TrackSystemResponse = {
   processed: boolean
@@ -27,7 +28,8 @@ export class Journal {
    */
   static async trackSystem(message: JournalMessage, sequelize: Sequelize): Promise<TrackSystemResponse> {
     if (message.message.event !== JournalEvents.FSDJump && message.message.event !== JournalEvents.Location) {
-      return { processed: false, processingErrors: ['Not a FSDJump or Location event. Skipping processing.'] } // Only track FSDJump and Location events
+      // Only track FSDJump and Location events.
+      return { processed: false, processingErrors: ['Not a FSDJump or Location event. Skipping processing.'] }
     }
 
     const messageBody = (message as FSDJump).message
@@ -35,7 +37,7 @@ export class Journal {
     try {
       const errors = await this.checkMessageJump(messageBody)
 
-      // Skip processing if the message contains data invalid for EliteBGS
+      // Skip processing if the message contains data invalid for EliteBGS.
       if (errors.length > 0) {
         return { processed: false, processingErrors: errors }
       }
@@ -50,23 +52,11 @@ export class Journal {
 
     try {
       await sequelize.transaction(async (transaction) => {
-        let system = await findSystem(messageBody.SystemAddress, transaction)
+        const system = await this.ensureSystemWAliases(messageBody, transaction)
 
-        if (!system) {
-          console.debug(`System ${messageBody.StarSystem} doesn't exist. Creating...`)
-          system = await createSystem(messageBody, transaction)
-        } else {
-          if (messageBody.StarSystem !== system.starSystem) {
-            const systemAliases = await system.getSystemAliases()
-            if (!systemAliases.some((alias) => alias.alias === messageBody.StarSystem.toLowerCase())) {
-              await system.createSystemAlias({
-                alias: system.starSystem,
-                aliasLower: system.starSystemLower,
-              })
-              await updateSystemName(system.id, messageBody.StarSystem, transaction)
-            }
-          }
-        }
+        const systemHistories = await this.ensureSystemHistory(messageBody, system, transaction)
+
+        console.log(`System histories: ${systemHistories}`)
       })
     } catch (err) {
       return {
@@ -76,6 +66,128 @@ export class Journal {
     }
 
     return { processed: true, processingErrors: [] }
+  }
+
+  /**
+   * Find the system with the system address along with its aliases. If the system with the system address exists, check
+   * if the name is the same and create an alias if not. An alias is only created if that alias is previously not
+   * created. If the system address doesn't exist, a new record is created.
+   */
+  private static async ensureSystemWAliases(message: FSDJump['message'], transaction: Transaction) {
+    let system = await Systems.findOne({
+      where: { systemAddress: message.SystemAddress.toString() },
+      include: [SystemAliases],
+      transaction,
+    })
+
+    if (!system) {
+      console.debug(`System ${message.StarSystem} doesn't exist. Creating...`)
+      system = await Systems.create(
+        {
+          starSystem: message.StarSystem,
+          starSystemLower: message.StarSystem.toLowerCase(),
+          systemAddress: message.SystemAddress.toString(),
+          starPos: {
+            type: 'Point',
+            coordinates: message.StarPos,
+            crs: { type: 'name', properties: { name: '0' } },
+          },
+        },
+        {
+          transaction,
+        },
+      )
+    } else {
+      if (message.StarSystem !== system.starSystem) {
+        const systemAliases = system.SystemAliases
+        // Checking the actual names so that even changing the case will create an alias.
+        if (!systemAliases.some((alias) => alias.alias === message.StarSystem)) {
+          await system.createSystemAlias(
+            {
+              alias: system.starSystem,
+              aliasLower: system.starSystemLower,
+            },
+            { transaction },
+          )
+          await system.update(
+            {
+              starSystem: message.StarSystem,
+              starSystemLower: message.StarSystem.toLowerCase(),
+            },
+            { transaction },
+          )
+        }
+      }
+    }
+
+    return system
+  }
+
+  /**
+   * Get all system history records that became valid within the last 48 hours. If no system history records are found
+   * that became valid within the last 48 hours, the last record that is there is fetched. If still no system history is
+   * found, then the system is newly created, and a fresh history record is created.
+   */
+  private static async ensureSystemHistory(message: FSDJump['message'], system: Systems, transaction: Transaction) {
+    const timeNow = Date.now()
+
+    let systemHistories = await system.getSystemHistories({
+      where: {
+        validFrom: {
+          [Op.gte]: new Date(timeNow - 172800000),
+        },
+      },
+      order: [['validFrom', 'DESC']],
+      transaction,
+    })
+
+    if (systemHistories.length === 0) {
+      systemHistories = await system.getSystemHistories({
+        limit: 1,
+        order: [['validFrom', 'DESC']],
+        transaction,
+      })
+    }
+
+    // If the system data matches all values for any data in the last 48 hours, skip processing.
+    if (
+      systemHistories.length > 0 &&
+      systemHistories.some(
+        (history) =>
+          history.population === message.Population &&
+          history.systemGovernment === message.SystemGovernment &&
+          history.systemAllegiance === message.SystemAllegiance &&
+          history.systemSecurity === message.SystemSecurity &&
+          history.systemEconomy === message.SystemEconomy &&
+          history.systemSecondEconomy === message.SystemSecondEconomy,
+      )
+    ) {
+      return systemHistories
+    }
+    // If there are existing history records, mark the validTo of the latest record as a new record is to be added.
+    if (systemHistories.length > 0) {
+      await systemHistories[0].update(
+        {
+          validTo: new Date(message.timestamp),
+        },
+        { transaction },
+      )
+    }
+    const insertedSystemHistory = await system.createSystemHistory(
+      {
+        population: message.Population,
+        systemGovernment: message.SystemGovernment,
+        systemAllegiance: message.SystemAllegiance,
+        systemSecurity: message.SystemSecurity,
+        systemEconomy: message.SystemEconomy,
+        systemSecondEconomy: message.SystemSecondEconomy,
+        validFrom: new Date(message.timestamp),
+      },
+      { transaction },
+    )
+    systemHistories.push(insertedSystemHistory)
+
+    return systemHistories
   }
 
   /**

@@ -1,35 +1,35 @@
 import type { CreationOptional, InferAttributes, InferCreationAttributes, ForeignKey } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
-import { Systems } from './systems.ts'
+import { SystemFactions } from './system_factions.ts'
 
-export class SystemAliases extends Model<InferAttributes<SystemAliases>, InferCreationAttributes<SystemAliases>> {
+export class PendingStates extends Model<InferAttributes<PendingStates>, InferCreationAttributes<PendingStates>> {
   declare id: CreationOptional<string>
-  declare systemId: ForeignKey<Systems['id']>
-  declare alias: string
-  declare aliasLower: string
+  declare state: string
+  declare trend: number
+  declare systemFactionId: ForeignKey<SystemFactions['id']>
 
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 }
 
-export function SystemAliasesInit(sequelize: Sequelize) {
-  SystemAliases.init(
+export function PendingStatesInit(sequelize: Sequelize) {
+  PendingStates.init(
     {
       id: {
         type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      systemId: {
+      systemFactionId: {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      alias: {
+      state: {
         type: DataTypes.STRING,
         allowNull: false,
       },
-      aliasLower: {
-        type: DataTypes.STRING,
+      trend: {
+        type: DataTypes.DECIMAL,
         allowNull: false,
       },
       createdAt: {
@@ -41,6 +41,6 @@ export function SystemAliasesInit(sequelize: Sequelize) {
         allowNull: false,
       },
     },
-    { sequelize, tableName: 'system_aliases', underscored: true },
+    { sequelize, tableName: 'pending_states', underscored: true },
   )
 }

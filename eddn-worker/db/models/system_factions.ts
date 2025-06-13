@@ -1,19 +1,24 @@
 import type { CreationOptional, InferAttributes, InferCreationAttributes, ForeignKey } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import { Systems } from './systems.ts'
+import { Factions } from './factions.ts'
 
-export class SystemAliases extends Model<InferAttributes<SystemAliases>, InferCreationAttributes<SystemAliases>> {
+export class SystemFactions extends Model<InferAttributes<SystemFactions>, InferCreationAttributes<SystemFactions>> {
   declare id: CreationOptional<string>
   declare systemId: ForeignKey<Systems['id']>
-  declare alias: string
-  declare aliasLower: string
+  declare factionId: ForeignKey<Factions['id']>
+  declare factionState: string
+  declare influence: string
+  declare happiness: string
+  declare validFrom: Date
+  declare validTo: Date
 
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 }
 
-export function SystemAliasesInit(sequelize: Sequelize) {
-  SystemAliases.init(
+export function SystemFactionsInit(sequelize: Sequelize) {
+  SystemFactions.init(
     {
       id: {
         type: DataTypes.UUID,
@@ -24,13 +29,27 @@ export function SystemAliasesInit(sequelize: Sequelize) {
         type: DataTypes.UUID,
         allowNull: false,
       },
-      alias: {
+      factionId: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
+      factionState: {
         type: DataTypes.STRING,
         allowNull: false,
       },
-      aliasLower: {
-        type: DataTypes.STRING,
+      influence: {
+        type: DataTypes.DECIMAL,
         allowNull: false,
+      },
+      happiness: {
+        type: DataTypes.STRING,
+      },
+      validFrom: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
+      validTo: {
+        type: DataTypes.DATE,
       },
       createdAt: {
         type: DataTypes.DATE,
@@ -41,6 +60,6 @@ export function SystemAliasesInit(sequelize: Sequelize) {
         allowNull: false,
       },
     },
-    { sequelize, tableName: 'system_aliases', underscored: true },
+    { sequelize, tableName: 'system_factions', underscored: true },
   )
 }

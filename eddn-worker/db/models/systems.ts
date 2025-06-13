@@ -18,20 +18,23 @@ import type {
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import { type PointWCrs } from '@elitebgs/types/geoJson.ts'
 import { SystemAliases } from './system_aliases.ts'
+import { SystemHistories } from './system_histories.ts'
+import { SystemFactions } from './system_factions.ts'
 
 export class Systems extends Model<
-  InferAttributes<Systems, { omit: 'systemAliases' }>,
-  InferCreationAttributes<Systems, { omit: 'systemAliases' }>
+  InferAttributes<Systems, { omit: 'SystemAliases' }>,
+  InferCreationAttributes<Systems, { omit: 'SystemAliases' }>
 > {
   declare id: CreationOptional<string>
-  declare createdAt: CreationOptional<Date>
-  declare updatedAt: CreationOptional<Date>
   declare starSystem: string
   declare starSystemLower: string
   declare systemAddress: string
   declare starPos: PointWCrs
 
-  declare systemAliases?: NonAttribute<SystemAliases[]>
+  declare createdAt: CreationOptional<Date>
+  declare updatedAt: CreationOptional<Date>
+
+  declare SystemAliases?: NonAttribute<SystemAliases[]>
   declare getSystemAliases: HasManyGetAssociationsMixin<SystemAliases>
   declare addSystemAlias: HasManyAddAssociationMixin<SystemAliases, string>
   declare addSystemAliases: HasManyAddAssociationsMixin<SystemAliases, string>
@@ -43,8 +46,16 @@ export class Systems extends Model<
   declare countSystemAliases: HasManyCountAssociationsMixin
   declare createSystemAlias: HasManyCreateAssociationMixin<SystemAliases, 'systemId'>
 
+  declare SystemHistories?: NonAttribute<SystemHistories[]>
+  declare getSystemHistories: HasManyGetAssociationsMixin<SystemHistories>
+  declare createSystemHistory: HasManyCreateAssociationMixin<SystemHistories, 'systemId'>
+
+  declare SystemFactions?: NonAttribute<SystemFactions[]>
+
   declare static associations: {
-    systemAliases: Association<Systems, SystemAliases>
+    SystemAliases: Association<Systems, SystemAliases>
+    SystemHistory: Association<Systems, SystemHistories>
+    SystemFactions: Association<Systems, SystemFactions>
   }
 }
 
@@ -58,19 +69,30 @@ export function SystemsInit(sequelize: Sequelize) {
       },
       starSystem: {
         type: DataTypes.STRING,
+        allowNull: false,
       },
       starSystemLower: {
         type: DataTypes.STRING,
+        allowNull: false,
       },
       systemAddress: {
         type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
       },
       starPos: {
         type: DataTypes.GEOMETRY('POINTZ', 0),
+        allowNull: false,
       },
-      // Needed to mute the typing error as sequelize can't figure it out
-      createdAt: DataTypes.DATE,
-      updatedAt: DataTypes.DATE,
+      // Needed to mute the typing error as sequelize can't figure it out.
+      createdAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
+      updatedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
     },
     { sequelize, tableName: 'systems', underscored: true },
   )
