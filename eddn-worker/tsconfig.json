@@ -1,4 +1,4 @@
-// Node.js doesn't care about tsconfig.json but the IDE does
+// Node.js doesn't care about tsconfig.json but the IDE does.
 {
   "compilerOptions": {
     "target": "esnext",

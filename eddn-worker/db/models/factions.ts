@@ -1,34 +1,38 @@
-import type { CreationOptional, InferAttributes, InferCreationAttributes, ForeignKey } from 'sequelize'
+import type { CreationOptional, InferAttributes, InferCreationAttributes } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
-import { Systems } from './systems.ts'
 
-export class SystemAliases extends Model<InferAttributes<SystemAliases>, InferCreationAttributes<SystemAliases>> {
+export class Factions extends Model<InferAttributes<Factions>, InferCreationAttributes<Factions>> {
   declare id: CreationOptional<string>
-  declare systemId: ForeignKey<Systems['id']>
-  declare alias: string
-  declare aliasLower: string
+  declare name: string
+  declare nameLower: string
+  declare government: string
+  declare allegiance: string
 
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 }
 
-export function SystemAliasesInit(sequelize: Sequelize) {
-  SystemAliases.init(
+export function FactionsInit(sequelize: Sequelize) {
+  Factions.init(
     {
       id: {
         type: DataTypes.UUID,
         defaultValue: DataTypes.UUIDV4,
         primaryKey: true,
       },
-      systemId: {
-        type: DataTypes.UUID,
-        allowNull: false,
-      },
-      alias: {
+      name: {
         type: DataTypes.STRING,
         allowNull: false,
       },
-      aliasLower: {
+      nameLower: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      government: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      allegiance: {
         type: DataTypes.STRING,
         allowNull: false,
       },
@@ -41,6 +45,6 @@ export function SystemAliasesInit(sequelize: Sequelize) {
         allowNull: false,
       },
     },
-    { sequelize, tableName: 'system_aliases', underscored: true },
+    { sequelize, tableName: 'factions', underscored: true },
   )
 }

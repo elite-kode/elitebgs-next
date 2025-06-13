@@ -224,3 +224,4 @@ dist
 .pnp.*
 
 ### Custom
+.idea/dataSources.xml
