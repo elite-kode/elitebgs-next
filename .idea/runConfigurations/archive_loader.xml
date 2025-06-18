@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="archive-loader" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="elitebgs" />
+    <working_directory value="$PROJECT_DIR$/archive-loader" />
+    <kind value="FILE" />
+    <package value="elitebgs" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$/archive-loader/main.go" />
+    <method v="2" />
+  </configuration>
+</component>
