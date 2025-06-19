@@ -1,4 +1,4 @@
-import type { CreationOptional, InferAttributes, InferCreationAttributes, ForeignKey } from 'sequelize'
+import type { CreationOptional, ForeignKey, InferAttributes, InferCreationAttributes } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import { Systems } from './systems.ts'
 
@@ -31,8 +31,11 @@ export function SystemHistoriesInit(sequelize: Sequelize) {
         allowNull: false,
       },
       population: {
-        type: DataTypes.INTEGER,
+        type: DataTypes.BIGINT,
         allowNull: false,
+        get() {
+          return parseInt(this.getDataValue('population').toString())
+        },
       },
       systemGovernment: {
         type: DataTypes.STRING,
