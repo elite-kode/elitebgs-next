@@ -137,6 +137,8 @@ func readBzip2FromFiles(workerUrl string) {
 func decompressAndSend(reader io.Reader, workerUrl string) {
 	bz2Reader := bzip2.NewReader(reader)
 	scanner := bufio.NewScanner(bz2Reader)
+	startTime := time.Now()
+	counter := 0
 	for scanner.Scan() {
 		func() {
 			line := scanner.Text()
@@ -160,7 +162,14 @@ func decompressAndSend(reader io.Reader, workerUrl string) {
 			if err != nil {
 				log.Println("Error closing file:", err)
 			}
-			log.Printf("Processed %s\n", messageData.Header.GatewayTimestamp)
+			elapsedTime := time.Since(startTime)
+			counter++
+			averageDuration := elapsedTime / time.Duration(counter)
+			log.Printf("Processed %s, average execution time %s, total execution time %s, iterations %d\n",
+				messageData.Header.GatewayTimestamp,
+				averageDuration.String(),
+				elapsedTime.String(),
+				counter)
 		}()
 	}
 	err := scanner.Err()
