@@ -68,8 +68,10 @@ export class App {
     this.app.post('/', this.handleMessage.bind(this))
   }
 
-  handleMessage(req, res) {
-    EDDN.handleMessage(req.body, this.sequelize)
+  async handleMessage(req, res) {
+    console.log('--------Handle new message--------')
+    await EDDN.handleMessage(req.body, this.sequelize)
+    console.log('----------Message handled----------')
     res.status(202).send({
       status: 'success',
     })
