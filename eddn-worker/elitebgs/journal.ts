@@ -1,4 +1,5 @@
-import { type FSDJump, JournalEvents, type JournalMessage } from '@elitebgs/types/eddn.ts'
+import { JournalEvents } from '@elitebgs/types/eddn.ts'
+import type { EDDNBase, FSDJump, JournalMessage } from '@elitebgs/types/eddn.ts'
 import { Op, Sequelize, Transaction } from 'sequelize'
 import { Systems } from '../db/models/systems.ts'
 import { SystemAliases } from '../db/models/system_aliases.ts'
@@ -33,6 +34,7 @@ export class Journal {
     }
 
     const messageBody = (message as FSDJump).message
+    const messageHeader = message.header
 
     try {
       const errors = await this.checkMessageJump(messageBody)
@@ -54,7 +56,7 @@ export class Journal {
       await sequelize.transaction(async (transaction) => {
         const system = await this.ensureSystemWAliases(messageBody, transaction)
 
-        const systemHistories = await this.ensureSystemHistory(messageBody, system, transaction)
+        const systemHistories = await this.ensureSystemHistory(messageBody, messageHeader, system, transaction)
 
         console.log(`System histories: ${systemHistories}`)
       })
@@ -128,9 +130,20 @@ export class Journal {
    * that became valid within the last 48 hours, the last record that is there is fetched. If still no system history is
    * found, then the system is newly created, and a fresh history record is created.
    */
-  private static async ensureSystemHistory(message: FSDJump['message'], system: Systems, transaction: Transaction) {
-    const timeNow = Date.now()
+  private static async ensureSystemHistory(
+    message: FSDJump['message'],
+    header: EDDNBase['header'],
+    system: Systems,
+    transaction: Transaction,
+  ) {
+    let timeNow: number
+    if (process.env.LOAD_ARCHIVE === 'true') {
+      timeNow = Date.parse(header.gatewayTimestamp)
+    } else {
+      timeNow = Date.now()
+    }
 
+    // Get all the history records up to 48 hours earlier.
     let systemHistories = await system.getSystemHistories({
       where: {
         validFrom: {
@@ -141,6 +154,8 @@ export class Journal {
       transaction,
     })
 
+    // If there are no history records, try to get the most recent history record available
+    // earlier than the message timestamp.
     if (systemHistories.length === 0) {
       systemHistories = await system.getSystemHistories({
         limit: 1,
@@ -149,21 +164,36 @@ export class Journal {
       })
     }
 
-    // If the system data matches all values for any data in the last 48 hours, skip processing.
-    if (
-      systemHistories.length > 0 &&
-      systemHistories.some(
-        (history) =>
-          history.population === message.Population &&
-          history.systemGovernment === message.SystemGovernment &&
-          history.systemAllegiance === message.SystemAllegiance &&
-          history.systemSecurity === message.SystemSecurity &&
-          history.systemEconomy === message.SystemEconomy &&
-          history.systemSecondEconomy === message.SystemSecondEconomy,
-      )
-    ) {
-      return systemHistories
+    // Run some checks on the message with the existing history to verify that it should be processed.
+    if (systemHistories.length > 0) {
+      // If the message timestamp is older than the start of the latest record, skip processing.
+      if (new Date(message.timestamp) < systemHistories[0].validFrom) {
+        return systemHistories
+      }
+
+      // If the message timestamp is newer than the start of the latest record but older than the end of
+      // that record, which might happen if the latest record's validity has been closed. This will probably
+      // not happen for system histories, but still added to keep the logic similar to faction histories.
+      if (new Date(message.timestamp) < systemHistories[0].validTo) {
+        return systemHistories
+      }
+
+      // If the system data matches all values for any data in the last 48 hours, skip processing.
+      if (
+        systemHistories.some(
+          (history) =>
+            history.population === message.Population &&
+            history.systemGovernment === message.SystemGovernment &&
+            history.systemAllegiance === message.SystemAllegiance &&
+            history.systemSecurity === message.SystemSecurity &&
+            history.systemEconomy === message.SystemEconomy &&
+            history.systemSecondEconomy === message.SystemSecondEconomy,
+        )
+      ) {
+        return systemHistories
+      }
     }
+
     // If there are existing history records, mark the validTo of the latest record as a new record is to be added.
     if (systemHistories.length > 0) {
       await systemHistories[0].update(
