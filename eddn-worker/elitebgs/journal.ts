@@ -271,6 +271,9 @@ export class Journal {
     if (message.Population === undefined) {
       errors.push(`Received FSDJump message without Population. Skipping processing. StarSystem: ${message.StarSystem}`)
     }
+    if (!message.Factions || message.Factions.length === 0) {
+      errors.push(`Received FSDJump message without Factions. Skipping processing. StarSystem: ${message.StarSystem}`)
+    }
     return errors
   }
 
