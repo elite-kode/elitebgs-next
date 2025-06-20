@@ -78,7 +78,6 @@ export function SystemsInit(sequelize: Sequelize) {
       systemAddress: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: true,
       },
       starPos: {
         type: DataTypes.GEOMETRY('POINTZ', 0),
@@ -94,6 +93,16 @@ export function SystemsInit(sequelize: Sequelize) {
         allowNull: false,
       },
     },
-    { sequelize, tableName: 'systems', underscored: true },
+    {
+      sequelize,
+      tableName: 'systems',
+      underscored: true,
+      indexes: [
+        {
+          unique: true,
+          fields: ['system_address'],
+        },
+      ],
+    },
   )
 }

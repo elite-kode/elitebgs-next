@@ -73,6 +73,15 @@ export function SystemHistoriesInit(sequelize: Sequelize) {
         allowNull: false,
       },
     },
-    { sequelize, tableName: 'system_histories', underscored: true },
+    {
+      sequelize,
+      tableName: 'system_histories',
+      underscored: true,
+      indexes: [
+        {
+          fields: ['valid_from'],
+        },
+      ],
+    },
   )
 }
