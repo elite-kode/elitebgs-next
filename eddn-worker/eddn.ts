@@ -1,9 +1,9 @@
 import { satisfies } from 'semver'
+import { Sequelize } from 'sequelize'
 import type { EDDNBase, JournalMessage } from '@elitebgs/types/eddn.ts'
 import { EDDN as eddnModel } from './db/models/eddn.ts'
 import { Journal } from './elitebgs/journal.ts'
 import softwareGuards from './eddn-software-guards.json' with { type: 'json' }
-import { Sequelize } from 'sequelize'
 
 export class EDDN {
   static async handleMessage(message: EDDNBase, sequelize: Sequelize) {
@@ -24,7 +24,7 @@ export class EDDN {
     } else {
       processingErrors = ['Received message not from the Journal schema. Skipping processing.']
     }
-    await EDDN.saveMessage(message.$schemaRef, processed, processingErrors, message)
+    await EDDN.saveMessage(message.$schemaRef, message.header, message, processed, processingErrors)
   }
 
   private static handleMessageSoftware(softwareName: string, softwareVersion: string): boolean {
@@ -57,15 +57,17 @@ export class EDDN {
 
   private static async saveMessage(
     schemaRef: string,
+    header: unknown,
+    message: unknown,
     processed: boolean,
     processingErrors: string[],
-    message: unknown,
   ) {
     const eddn = new eddnModel({
       schemaRef,
+      header,
+      message,
       processed,
       processingErrors,
-      message,
     })
 
     await eddn.save()
