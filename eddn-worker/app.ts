@@ -13,7 +13,7 @@ export class App {
   constructor(sequelize: Sequelize) {
     this.sequelize = sequelize
     this.app = express()
-    this.app.use(express.json())
+    this.app.use(express.json({ reviver: this.parseDateInBody }))
     this.app.use(express.urlencoded({ extended: true }))
     this.routes()
     this.connect()
@@ -75,5 +75,12 @@ export class App {
     res.status(202).send({
       status: 'success',
     })
+  }
+
+  private parseDateInBody(key: string, value: string ) {
+    if (value && (key === 'timestamp' || key === 'gatewayTimestamp')) {
+      return new Date(value)
+    }
+    return value
   }
 }

@@ -3,16 +3,21 @@ export type EDDNBase = {
   header: {
     gameversion: string
     gamebuild: string
-    gatewayTimestamp: string
+    gatewayTimestamp: Date
     softwareName: string
     softwareVersion: string
     uploaderID: string
   }
+  message: unknown
 }
 
 export type JournalMessage = EDDNBase & {
   message: {
-    event: JournalEvents
+    event: JournalEvents,
+    timestamp: Date,
+    StarSystem: string,
+    StarPos: number[]
+    // Todo: Add SystemAddress here once the import for January 2019 is done.
   }
 }
 
@@ -21,13 +26,10 @@ export enum JournalEvents {
   Location = 'Location',
 }
 
-export type FSDJump = EDDNBase & {
+export type FSDJump = JournalMessage & {
   message: {
     event: JournalEvents.FSDJump
-    timestamp: string
     SystemAddress: number
-    StarSystem: string
-    StarPos: number[]
     SystemAllegiance: string
     SystemEconomy: string
     SystemSecondEconomy: string

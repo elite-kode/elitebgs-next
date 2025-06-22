@@ -138,7 +138,7 @@ export class Journal {
   ) {
     let timeNow: number
     if (process.env.LOAD_ARCHIVE === 'true') {
-      timeNow = Date.parse(header.gatewayTimestamp)
+      timeNow = header.gatewayTimestamp.getTime()
     } else {
       timeNow = Date.now()
     }
@@ -167,14 +167,14 @@ export class Journal {
     // Run some checks on the message with the existing history to verify that it should be processed.
     if (systemHistories.length > 0) {
       // If the message timestamp is older than the start of the latest record, skip processing.
-      if (new Date(message.timestamp) < systemHistories[0].validFrom) {
+      if (message.timestamp < systemHistories[0].validFrom) {
         return systemHistories
       }
 
       // If the message timestamp is newer than the start of the latest record but older than the end of
       // that record, which might happen if the latest record's validity has been closed. This will probably
       // not happen for system histories, but still added to keep the logic similar to faction histories.
-      if (new Date(message.timestamp) < systemHistories[0].validTo) {
+      if (message.timestamp < systemHistories[0].validTo) {
         return systemHistories
       }
 
@@ -198,7 +198,7 @@ export class Journal {
     if (systemHistories.length > 0) {
       await systemHistories[0].update(
         {
-          validTo: new Date(message.timestamp),
+          validTo: message.timestamp,
         },
         { transaction },
       )
@@ -211,7 +211,7 @@ export class Journal {
         systemSecurity: message.SystemSecurity,
         systemEconomy: message.SystemEconomy,
         systemSecondEconomy: message.SystemSecondEconomy,
-        validFrom: new Date(message.timestamp),
+        validFrom: message.timestamp,
       },
       { transaction },
     )
@@ -226,8 +226,8 @@ export class Journal {
    */
   private static async checkMessageJump(message: FSDJump['message']) {
     const errors: string[] = []
-    if (new Date(message.timestamp) < new Date('2017-10-07T00:00:00Z') || new Date(message.timestamp) > new Date()) {
-      errors.push(`Received FSDJump message with invalid timestamp: ${message.timestamp}. Skipping processing.`)
+    if (message.timestamp < new Date('2017-10-07T00:00:00Z') || message.timestamp > new Date()) {
+      errors.push(`Received FSDJump message with invalid timestamp: ${message.timestamp.toISOString()}. Skipping processing.`)
     }
     if (message.StarSystem === undefined) {
       errors.push('Received FSDJump message without StarSystem. Skipping processing.')

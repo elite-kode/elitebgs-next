@@ -8,7 +8,7 @@ export class SystemFactions extends Model<InferAttributes<SystemFactions>, Infer
   declare systemId: ForeignKey<Systems['id']>
   declare factionId: ForeignKey<Factions['id']>
   declare factionState: string
-  declare influence: string
+  declare influence: number
   declare happiness: string
   declare validFrom: Date
   declare validTo: Date

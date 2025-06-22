@@ -1,6 +1,6 @@
 import { model, Schema } from 'mongoose'
 
-interface IEddn {
+interface IEDDN {
   schemaRef: string
   header: unknown
   message: unknown
@@ -8,7 +8,7 @@ interface IEddn {
   processingErrors: string[]
 }
 
-const eddn = new Schema<IEddn>({
+const eddn = new Schema<IEDDN>({
   schemaRef: { type: String, required: true, index: true },
   header: { type: Schema.Types.Mixed, required: true },
   message: { type: Schema.Types.Mixed, required: true },
@@ -16,4 +16,4 @@ const eddn = new Schema<IEddn>({
   processingErrors: { type: [String], required: true },
 })
 
-export const EDDN = model<IEddn>('EDDN', eddn)
+export const EDDN = model<IEDDN>('EDDN', eddn)
