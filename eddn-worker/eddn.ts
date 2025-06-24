@@ -8,23 +8,23 @@ import softwareGuards from './eddn-software-guards.json' with { type: 'json' }
 export class EDDN {
   static async handleMessage(message: EDDNBase, sequelize: Sequelize) {
     let processed: boolean = false
-    let processingErrors: string[] = []
+    let processingMessages: string[] = []
     if (message.$schemaRef === Journal.getSchema()) {
       if (parseFloat(message.header.gameversion) < 4) {
-        processingErrors.push(
+        processingMessages.push(
           `Received message from legacy game version: ${message.header.gameversion}. Skipping processing.`,
         )
       } else if (!this.handleMessageSoftware(message.header.softwareName, message.header.softwareVersion)) {
-        processingErrors.push(
+        processingMessages.push(
           `Received message from disallowed software: ${message.header.softwareName}. Skipping processing.`,
         )
       } else {
-        ;({ processed, processingErrors } = await Journal.trackSystem(message as JournalMessage, sequelize))
+        ;({ processed, processingMessages } = await Journal.trackSystem(message as JournalMessage, sequelize))
       }
     } else {
-      processingErrors = ['Received message not from the Journal schema. Skipping processing.']
+      processingMessages = ['Received message not from the Journal schema. Skipping processing.']
     }
-    await EDDN.saveMessage(message.$schemaRef, message.header, message, processed, processingErrors)
+    await EDDN.saveMessage(message.$schemaRef, message.header, message, processed, processingMessages)
   }
 
   private static handleMessageSoftware(softwareName: string, softwareVersion: string): boolean {
@@ -60,14 +60,14 @@ export class EDDN {
     header: unknown,
     message: unknown,
     processed: boolean,
-    processingErrors: string[],
+    processingMessages: string[],
   ) {
     const eddn = new eddnModel({
       schemaRef,
       header,
       message,
       processed,
-      processingErrors,
+      processingMessages,
     })
 
     await eddn.save()

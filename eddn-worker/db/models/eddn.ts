@@ -5,7 +5,7 @@ interface IEDDN {
   header: unknown
   message: unknown
   processed: boolean
-  processingErrors: string[]
+  processingMessages: string[]
 }
 
 const eddn = new Schema<IEDDN>({
@@ -13,7 +13,7 @@ const eddn = new Schema<IEDDN>({
   header: { type: Schema.Types.Mixed, required: true },
   message: { type: Schema.Types.Mixed, required: true },
   processed: { type: Boolean, required: true, index: true },
-  processingErrors: { type: [String], required: true },
+  processingMessages: { type: [String], required: true },
 })
 
 export const EDDN = model<IEDDN>('EDDN', eddn)

@@ -6,7 +6,7 @@ import { SystemAliases } from '../db/models/system_aliases.ts'
 
 export type TrackSystemResponse = {
   processed: boolean
-  processingErrors: string[]
+  processingMessages: string[]
 }
 
 /** Responsible for handling EDDN journal messages. */
@@ -30,7 +30,7 @@ export class Journal {
   static async trackSystem(message: JournalMessage, sequelize: Sequelize): Promise<TrackSystemResponse> {
     if (message.message.event !== JournalEvents.FSDJump && message.message.event !== JournalEvents.Location) {
       // Only track FSDJump and Location events.
-      return { processed: false, processingErrors: ['Not a FSDJump or Location event. Skipping processing.'] }
+      return { processed: false, processingMessages: ['Not a FSDJump or Location event. Skipping processing.'] }
     }
 
     const messageBody = (message as FSDJump).message
@@ -41,12 +41,12 @@ export class Journal {
 
       // Skip processing if the message contains data invalid for EliteBGS.
       if (errors.length > 0) {
-        return { processed: false, processingErrors: errors }
+        return { processed: false, processingMessages: errors }
       }
     } catch (err) {
       return {
         processed: false,
-        processingErrors: [`Error occurred while validating message. Skipping processing. Error: ${err}`],
+        processingMessages: [`Error occurred while validating message. Skipping processing. Error: ${err}`],
       }
     }
 
@@ -54,20 +54,30 @@ export class Journal {
 
     try {
       await sequelize.transaction(async (transaction) => {
-        const system = await this.ensureSystemWAliases(messageBody, transaction)
+        const {
+          system,
+          processed: systemProcessed,
+          processingMessages: systemProcessingMessages,
+        } = await this.ensureSystemWAliases(messageBody, transaction)
 
-        const systemHistories = await this.ensureSystemHistory(messageBody, messageHeader, system, transaction)
+        const { processed: systemHistoriesProcessed, processingMessages: systemHistoriesProcessingMessages } =
+          await this.ensureSystemHistory(messageBody, messageHeader, system, transaction)
 
-        console.log(`System histories: ${systemHistories}`)
+        // If no errors occur, then the `processed` value is determined based on if at least 1 entity was processed.
+        // And all the messages generated are also returned.
+        return {
+          processed: systemProcessed || systemHistoriesProcessed,
+          processingMessages: systemProcessingMessages.concat(systemHistoriesProcessingMessages),
+        }
       })
     } catch (err) {
       return {
         processed: false,
-        processingErrors: [`Error occurred while in DB operation. Skipping processing. Error: ${err}`],
+        processingMessages: [`Error occurred while in DB operation. Skipping processing. Error: ${err}`],
       }
     }
 
-    return { processed: true, processingErrors: [] }
+    return { processed: true, processingMessages: [] }
   }
 
   /**
@@ -83,7 +93,6 @@ export class Journal {
     })
 
     if (!system) {
-      console.debug(`System ${message.StarSystem} doesn't exist. Creating...`)
       system = await Systems.create(
         {
           starSystem: message.StarSystem,
@@ -99,30 +108,32 @@ export class Journal {
           transaction,
         },
       )
-    } else {
-      if (message.StarSystem !== system.starSystem) {
-        const systemAliases = system.SystemAliases
-        // Checking the actual names so that even changing the case will create an alias.
-        if (!systemAliases.some((alias) => alias.alias === message.StarSystem)) {
-          await system.createSystemAlias(
-            {
-              alias: system.starSystem,
-              aliasLower: system.starSystemLower,
-            },
-            { transaction },
-          )
-          await system.update(
-            {
-              starSystem: message.StarSystem,
-              starSystemLower: message.StarSystem.toLowerCase(),
-            },
-            { transaction },
-          )
-        }
+
+      return { system, processed: true, processingMessages: [`System ${message.StarSystem} created.`] }
+    }
+
+    if (message.StarSystem !== system.starSystem) {
+      const systemAliases = system.SystemAliases
+      // Checking the actual names so that even changing the case will create an alias.
+      if (!systemAliases.some((alias) => alias.alias === message.StarSystem)) {
+        await system.createSystemAlias(
+          {
+            alias: system.starSystem,
+            aliasLower: system.starSystemLower,
+          },
+          { transaction },
+        )
+        await system.update(
+          {
+            starSystem: message.StarSystem,
+            starSystemLower: message.StarSystem.toLowerCase(),
+          },
+          { transaction },
+        )
       }
     }
 
-    return system
+    return { system, processed: true, processingMessages: [`System updated.`] }
   }
 
   /**
@@ -143,39 +154,55 @@ export class Journal {
       timeNow = Date.now()
     }
 
-    // Get all the history records up to 48 hours earlier.
-    let systemHistories = await system.getSystemHistories({
+    // Get the current status of the system by finding the record which doesn't have a `validTo`.
+    const currentSystemStatusPromise = system.getSystemHistories({
+      where: {
+        validTo: {
+          [Op.is]: null,
+        },
+      },
+      limit: 1,
+      order: [['validFrom', 'DESC']],
+      transaction,
+    })
+
+    // Get all the historical records of the system in the last 48 hours that have a `validTo`.
+    const systemHistoriesPromise = system.getSystemHistories({
       where: {
         validFrom: {
           [Op.gte]: new Date(timeNow - 172800000),
+        },
+        validTo: {
+          [Op.not]: null,
         },
       },
       order: [['validFrom', 'DESC']],
       transaction,
     })
 
-    // If there are no history records, try to get the most recent history record available
-    // earlier than the message timestamp.
-    if (systemHistories.length === 0) {
-      systemHistories = await system.getSystemHistories({
-        limit: 1,
-        order: [['validFrom', 'DESC']],
-        transaction,
-      })
+    const promiseSettled = await Promise.all([currentSystemStatusPromise, systemHistoriesPromise])
+    const currentSystemStatus = promiseSettled[0].at(0)
+    const systemHistories = promiseSettled[1]
+
+    // Check if the message contains the same data as the current state.
+    if (
+      currentSystemStatus &&
+      currentSystemStatus.population === message.Population &&
+      currentSystemStatus.systemGovernment === message.SystemGovernment &&
+      currentSystemStatus.systemAllegiance === message.SystemAllegiance &&
+      currentSystemStatus.systemSecurity === message.SystemSecurity &&
+      currentSystemStatus.systemEconomy === message.SystemEconomy &&
+      currentSystemStatus.systemSecondEconomy === message.SystemSecondEconomy
+    ) {
+      return { processed: false, processingMessages: [`Message is the same as the current record.`] }
     }
 
     // Run some checks on the message with the existing history to verify that it should be processed.
     if (systemHistories.length > 0) {
-      // If the message timestamp is older than the start of the latest record, skip processing.
-      if (message.timestamp < systemHistories[0].validFrom) {
-        return systemHistories
-      }
-
-      // If the message timestamp is newer than the start of the latest record but older than the end of
-      // that record, which might happen if the latest record's validity has been closed. This will probably
-      // not happen for system histories, but still added to keep the logic similar to faction histories.
-      if (message.timestamp < systemHistories[0].validTo) {
-        return systemHistories
+      // If the message timestamp is older than the start of the latest record, or older than the end of the latest
+      // record, skip processing.
+      if (message.timestamp < systemHistories[0].validFrom || message.timestamp < systemHistories[0].validTo) {
+        return { processed: false, processingMessages: [`Message is older than the latest record.`] }
       }
 
       // If the system data matches all values for any data in the last 48 hours, skip processing.
@@ -190,20 +217,21 @@ export class Journal {
             history.systemSecondEconomy === message.SystemSecondEconomy,
         )
       ) {
-        return systemHistories
+        return { processed: false, processingMessages: [`Message is probably cached.`] }
       }
     }
 
-    // If there are existing history records, mark the validTo of the latest record as a new record is to be added.
-    if (systemHistories.length > 0) {
-      await systemHistories[0].update(
+    // If there is a current system status history record, mark the `validTo` of the latest record as a new record
+    // is to be added.
+    if (currentSystemStatus) {
+      await currentSystemStatus.update(
         {
           validTo: message.timestamp,
         },
         { transaction },
       )
     }
-    const insertedSystemHistory = await system.createSystemHistory(
+    await system.createSystemHistory(
       {
         population: message.Population,
         systemGovernment: message.SystemGovernment,
@@ -215,9 +243,8 @@ export class Journal {
       },
       { transaction },
     )
-    systemHistories.push(insertedSystemHistory)
 
-    return systemHistories
+    return { processed: true, processingMessages: [`System history created.`] }
   }
 
   /**
@@ -227,7 +254,9 @@ export class Journal {
   private static async checkMessageJump(message: FSDJump['message']) {
     const errors: string[] = []
     if (message.timestamp < new Date('2017-10-07T00:00:00Z') || message.timestamp > new Date()) {
-      errors.push(`Received FSDJump message with invalid timestamp: ${message.timestamp.toISOString()}. Skipping processing.`)
+      errors.push(
+        `Received FSDJump message with invalid timestamp: ${message.timestamp.toISOString()}. Skipping processing.`,
+      )
     }
     if (message.StarSystem === undefined) {
       errors.push('Received FSDJump message without StarSystem. Skipping processing.')
