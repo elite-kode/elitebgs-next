@@ -1,8 +1,11 @@
-import { JournalEvents } from '@elitebgs/types/eddn.ts'
 import type { EDDNBase, FSDJump, JournalMessage } from '@elitebgs/types/eddn.ts'
+import { JournalEvents } from '@elitebgs/types/eddn.ts'
 import { Op, Sequelize, Transaction } from 'sequelize'
+import { difference, intersection, orderBy, unionWith, uniq } from 'lodash'
 import { Systems } from '../db/models/systems.ts'
 import { SystemAliases } from '../db/models/system_aliases.ts'
+import { Factions } from '../db/models/factions.ts'
+import { SystemFactions } from '../db/models/system_factions.ts'
 
 export type TrackSystemResponse = {
   processed: boolean
@@ -55,13 +58,19 @@ export class Journal {
     try {
       await sequelize.transaction(async (transaction) => {
         const {
+          factions,
+          processed: factionProcessed,
+          processingMessages: factionProcessingMessages,
+        } = await this.ensureFactions(messageBody, transaction)
+
+        const {
           system,
           processed: systemProcessed,
           processingMessages: systemProcessingMessages,
         } = await this.ensureSystemWAliases(messageBody, transaction)
 
         const { processed: systemHistoriesProcessed, processingMessages: systemHistoriesProcessingMessages } =
-          await this.ensureSystemHistory(messageBody, messageHeader, system, transaction)
+          await this.ensureSystemHistory(messageBody, messageHeader, system, factions, transaction)
 
         // If no errors occur, then the `processed` value is determined based on if at least 1 entity was processed.
         // And all the messages generated are also returned.
@@ -137,14 +146,15 @@ export class Journal {
   }
 
   /**
-   * Get all system history records that became valid within the last 48 hours. If no system history records are found
-   * that became valid within the last 48 hours, the last record that is there is fetched. If still no system history is
-   * found, then the system is newly created, and a fresh history record is created.
+   * Get the current system history record, i.e. one with `validTo` as NULL and records that became valid within the
+   * last 48 hours. If no current history record is found or if the message has different data than the current record,
+   * a fresh history record is created.
    */
   private static async ensureSystemHistory(
     message: FSDJump['message'],
     header: EDDNBase['header'],
     system: Systems,
+    factions: Factions[],
     transaction: Transaction,
   ) {
     let timeNow: number
@@ -197,6 +207,13 @@ export class Journal {
       return { processed: false, processingMessages: [`Message is the same as the current record.`] }
     }
 
+    // Get the faction data of the system faction.
+    const systemFaction = factions.find((faction) => faction.nameLower === message.SystemFaction.Name.toLowerCase())
+
+    if (!systemFaction) {
+      throw new Error(`Unable to find the faction record for the faction ${message.SystemFaction.Name}.`)
+    }
+
     // Run some checks on the message with the existing history to verify that it should be processed.
     if (systemHistories.length > 0) {
       // If the message timestamp is older than the start of the latest record, or older than the end of the latest
@@ -214,7 +231,9 @@ export class Journal {
             history.systemAllegiance === message.SystemAllegiance &&
             history.systemSecurity === message.SystemSecurity &&
             history.systemEconomy === message.SystemEconomy &&
-            history.systemSecondEconomy === message.SystemSecondEconomy,
+            history.systemSecondEconomy === message.SystemSecondEconomy &&
+            history.systemFactionId === systemFaction.id &&
+            history.systemFactionState === message.SystemFaction.FactionState,
         )
       ) {
         return { processed: false, processingMessages: [`Message is probably cached.`] }
@@ -239,12 +258,51 @@ export class Journal {
         systemSecurity: message.SystemSecurity,
         systemEconomy: message.SystemEconomy,
         systemSecondEconomy: message.SystemSecondEconomy,
+        systemFactionId: systemFaction.id,
+        systemFactionState: message.SystemFaction.FactionState.toLowerCase(),
         validFrom: message.timestamp,
       },
       { transaction },
     )
 
     return { processed: true, processingMessages: [`System history created.`] }
+  }
+
+  /**
+   * Find the faction with the faction name. If the faction with the faction name doesn't exist, a new record is
+   * created.
+   */
+  private static async ensureFactions(message: FSDJump['message'], transaction: Transaction) {
+    const factionPromises = await Promise.all(
+      message.Factions.map(async (messageFaction) => {
+        let faction = await Factions.findOne({
+          where: { nameLower: messageFaction.Name.toLowerCase() },
+          transaction,
+        })
+
+        if (!faction) {
+          faction = await Factions.create(
+            {
+              name: messageFaction.Name,
+              nameLower: messageFaction.Name.toLowerCase(),
+              government: messageFaction.Government,
+              allegiance: messageFaction.Allegiance,
+            },
+            {
+              transaction,
+            },
+          )
+        }
+
+        return { faction, processed: true, processingMessages: [`System ${message.StarSystem} created.`] }
+      }),
+    )
+
+    return {
+      factions: factionPromises.map((factionPromise) => factionPromise.faction),
+      processed: factionPromises.some((factionPromise) => factionPromise.processed),
+      processingMessages: factionPromises.flatMap((factionPromise) => factionPromise.processingMessages),
+    }
   }
 
   /**

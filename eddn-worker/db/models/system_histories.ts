@@ -1,6 +1,7 @@
 import type { CreationOptional, ForeignKey, InferAttributes, InferCreationAttributes } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import { Systems } from './systems.ts'
+import { Factions } from './factions.ts'
 
 export class SystemHistories extends Model<InferAttributes<SystemHistories>, InferCreationAttributes<SystemHistories>> {
   declare id: CreationOptional<string>
@@ -11,6 +12,8 @@ export class SystemHistories extends Model<InferAttributes<SystemHistories>, Inf
   declare systemSecurity: string
   declare systemEconomy: string
   declare systemSecondEconomy: string
+  declare systemFactionId: ForeignKey<Factions['id']>
+  declare systemFactionState: string
   declare validFrom: Date
   declare validTo: Date
 
@@ -54,6 +57,14 @@ export function SystemHistoriesInit(sequelize: Sequelize) {
         allowNull: false,
       },
       systemSecondEconomy: {
+        type: DataTypes.STRING,
+        allowNull: false,
+      },
+      systemFactionId: {
+        type: DataTypes.UUID,
+        allowNull: false,
+      },
+      systemFactionState: {
         type: DataTypes.STRING,
         allowNull: false,
       },
