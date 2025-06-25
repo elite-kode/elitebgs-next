@@ -1,7 +1,10 @@
-import type { CreationOptional, InferAttributes, InferCreationAttributes, ForeignKey } from 'sequelize'
+import type { CreationOptional, ForeignKey, InferAttributes, InferCreationAttributes, NonAttribute } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import { Systems } from './systems.ts'
 import { Factions } from './factions.ts'
+import { ActiveStates } from './active_states.ts'
+import { PendingStates } from './pending_states.ts'
+import { RecoveringStates } from './recovering_states.ts'
 
 export class SystemFactions extends Model<InferAttributes<SystemFactions>, InferCreationAttributes<SystemFactions>> {
   declare id: CreationOptional<string>
@@ -15,6 +18,10 @@ export class SystemFactions extends Model<InferAttributes<SystemFactions>, Infer
 
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
+
+  declare ActiveStates?: NonAttribute<ActiveStates[]>
+  declare PendingStates?: NonAttribute<PendingStates[]>
+  declare RecoveringStates?: NonAttribute<RecoveringStates[]>
 }
 
 export function SystemFactionsInit(sequelize: Sequelize) {

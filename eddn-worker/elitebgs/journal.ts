@@ -1,11 +1,14 @@
-import type { EDDNBase, FSDJump, JournalMessage } from '@elitebgs/types/eddn.ts'
+import type { EDDNBase, FSDJump, JournalMessage, State } from '@elitebgs/types/eddn.ts'
 import { JournalEvents } from '@elitebgs/types/eddn.ts'
 import { Op, Sequelize, Transaction } from 'sequelize'
-import { difference, intersection, orderBy, unionWith, uniq } from 'lodash'
+import { difference, intersection, isEqualWith, uniq } from 'lodash'
 import { Systems } from '../db/models/systems.ts'
 import { SystemAliases } from '../db/models/system_aliases.ts'
 import { Factions } from '../db/models/factions.ts'
 import { SystemFactions } from '../db/models/system_factions.ts'
+import { ActiveStates } from '../db/models/active_states.ts'
+import { RecoveringStates } from '../db/models/recovering_states.ts'
+import { PendingStates } from '../db/models/pending_states.ts'
 
 export type TrackSystemResponse = {
   processed: boolean
@@ -72,11 +75,17 @@ export class Journal {
         const { processed: systemHistoriesProcessed, processingMessages: systemHistoriesProcessingMessages } =
           await this.ensureSystemHistory(messageBody, messageHeader, system, factions, transaction)
 
+        const { processed: factionHistoriesProcessed, processingMessages: factionHistoriesProcessingMessages } =
+          await this.ensureFactionSystemHistory(messageBody, messageHeader, system, factions, transaction)
+
         // If no errors occur, then the `processed` value is determined based on if at least 1 entity was processed.
         // And all the messages generated are also returned.
         return {
-          processed: systemProcessed || systemHistoriesProcessed,
-          processingMessages: systemProcessingMessages.concat(systemHistoriesProcessingMessages),
+          processed: systemProcessed || systemHistoriesProcessed || factionProcessed || factionHistoriesProcessed,
+          processingMessages: systemProcessingMessages
+            .concat(systemHistoriesProcessingMessages)
+            .concat(factionProcessingMessages)
+            .concat(factionHistoriesProcessingMessages),
         }
       })
     } catch (err) {
@@ -303,6 +312,195 @@ export class Journal {
       processed: factionPromises.some((factionPromise) => factionPromise.processed),
       processingMessages: factionPromises.flatMap((factionPromise) => factionPromise.processingMessages),
     }
+  }
+
+  /** Get all the current faction history records and all the historical records for the last 48 hours. */
+  private static async ensureFactionSystemHistory(
+    message: FSDJump['message'],
+    header: EDDNBase['header'],
+    system: Systems,
+    factions: Factions[],
+    transaction: Transaction,
+  ) {
+    let timeNow: number
+    if (process.env.LOAD_ARCHIVE === 'true') {
+      timeNow = header.gatewayTimestamp.getTime()
+    } else {
+      timeNow = Date.now()
+    }
+
+    // Get the current status of all the factions currently in the system, determined by searching for records that
+    // don't have a `validTo` entry.
+    const currentFactionsStatusPromise = SystemFactions.findAll({
+      where: {
+        systemId: system.id,
+        validTo: {
+          [Op.is]: null,
+        },
+      },
+      order: [
+        ['validFrom', 'DESC'],
+        ['factionId', 'ASC'],
+      ],
+      include: [ActiveStates, PendingStates, RecoveringStates],
+      transaction,
+    })
+
+    // Get all the historical records for all the factions in teh system in the last 48 hours that have a `validTo`.
+    const factionHistoriesPromise = SystemFactions.findAll({
+      where: {
+        systemId: system.id,
+        validFrom: {
+          [Op.gte]: new Date(timeNow - 172800000),
+        },
+        validTo: {
+          [Op.not]: null,
+        },
+      },
+      order: [
+        ['validFrom', 'DESC'],
+        ['factionId', 'ASC'],
+      ],
+      include: [ActiveStates, PendingStates, RecoveringStates],
+      transaction,
+    })
+
+    const promiseSettled = await Promise.all([currentFactionsStatusPromise, factionHistoriesPromise])
+    const currentFactionsStatus = promiseSettled[0]
+    const factionsHistories = promiseSettled[1]
+
+    const factionsCurrentlyPresent = uniq(currentFactionsStatus.map((systemFaction) => systemFaction.factionId))
+    const factionsInMessage = factions.map((faction) => faction.id)
+
+    // Create 3 sets of factions based on what kind of operation needs to be done on them.
+    const factionsRemovedIds = difference(factionsCurrentlyPresent, factionsInMessage)
+    const factionsAddedIds = difference(factionsInMessage, factionsCurrentlyPresent)
+    const factionsMaybeUpdatedIds = intersection(factionsCurrentlyPresent, factionsInMessage)
+
+    const processingMessages: string[] = []
+
+    // This starts a complicated logic to figure out if a faction that's supposedly removed from the system is actually
+    // removed or if the message is a cached message. For this, we need to figure out if the faction was added within
+    // the last 48 hours. Which means that in the last 48 hours there should be a gap between the `validTo` of one
+    // record and the `validFrom` of the next record.
+    // An edge case also needs to be taken into account where the first record that became valid in the last 48 hours
+    // was the addition of the faction, in which case, we don't have a previous record to compare against. So, if we
+    // don't find a gap between 2 records in the last 48 hours, we need to find the last record before 48 hours and
+    // compare it's `validTo` to the `validFrom` of the first record that became valid within 48 hours.
+    const filteredFactionRemovedIds = []
+
+    for (const factionRemovedId of factionsRemovedIds) {
+      const factionHistories = factionsHistories.filter((history) => history.factionId === factionRemovedId)
+      const currentFactionStatus = currentFactionsStatus.filter((status) => status.factionId === factionRemovedId)
+
+      const completeFactionHistories = currentFactionStatus.concat(factionHistories)
+
+      // `checkNewEntry` will keep track if the faction is a newly entered one or not.
+      let checkNewEntry = false
+
+      // Check every adjacent record's `validTo` and `validFrom`.
+      for (let i = 0; i < completeFactionHistories.length - 1; i++) {
+        if (completeFactionHistories[i].validFrom > completeFactionHistories[i + 1].validTo) {
+          checkNewEntry = true
+          break
+        }
+      }
+
+      // If no gaps are found, we need to check with the last record that went valid before 48 hours.
+      if (!checkNewEntry) {
+        const factionHistoryMarginCheck = await SystemFactions.findAll({
+          where: {
+            systemId: system.id,
+            factionId: factionRemovedId,
+            validFrom: {
+              [Op.lt]: new Date(timeNow - 172800000),
+            },
+          },
+          limit: 1,
+          transaction,
+        })
+        checkNewEntry =
+          factionHistoryMarginCheck.at(0)?.validTo <
+          completeFactionHistories[completeFactionHistories.length - 1].validFrom
+      }
+
+      if (checkNewEntry) {
+        processingMessages.push(`Faction with id ${factionRemovedId} is probably cached.`)
+        continue
+      }
+
+      filteredFactionRemovedIds.push(factionRemovedId)
+    }
+
+    // Filter all factions that were removed, and update the validTo for each of these records.
+    const systemFactionHistoriesRemovedPromise = currentFactionsStatus
+      .filter((status) => filteredFactionRemovedIds.includes(status.factionId))
+      .map((factionHistory) => {
+        return factionHistory.update(
+          {
+            validTo: message.timestamp,
+          },
+          { transaction },
+        )
+      })
+
+    // Filter all factions that were added, and check if the message faction is the same as any historical record.
+    const systemFactionHistoriesAddedPromise = factions
+      .filter((faction) => factionsAddedIds.includes(faction.id))
+      .map((faction) => {
+        // We get the current faction in the message.
+        const factionInMessage = message.Factions.find(
+          (messageFaction) => messageFaction.Name.toLowerCase() === faction.nameLower,
+        )
+
+        const isCached = factionsHistories
+          .filter((history) => history.factionId === faction.id)
+          .some((history) => {
+            // In here each history record for this faction gets checked with the message data to verify if there are
+            // any records that match.
+            return (
+              history.influence === factionInMessage.Influence &&
+              history.happiness === factionInMessage.Happiness &&
+              history.factionState === factionInMessage.FactionState &&
+              isEqualWith(
+                history.ActiveStates,
+                factionInMessage.ActiveStates,
+                (historyElement: ActiveStates, messageElement: State) => {
+                  return historyElement.state === messageElement.State
+                },
+              ) &&
+              isEqualWith(
+                history.PendingStates,
+                factionInMessage.PendingStates,
+                (historyElement: PendingStates, messageElement: State) => {
+                  return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
+                },
+              ) &&
+              isEqualWith(
+                history.RecoveringStates,
+                factionInMessage.RecoveringStates,
+                (historyElement: RecoveringStates, messageElement: State) => {
+                  return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
+                },
+              )
+            )
+          })
+
+        if (!isCached) {
+          return faction.createFactionHistory({
+            systemId: system.id,
+            factionState: factionInMessage.FactionState,
+            influence: factionInMessage.Influence,
+            happiness: factionInMessage.Happiness,
+          })
+        }
+      })
+
+    // const systemFactionHistoriesUpdated =
+
+    await Promise.all([systemFactionHistoriesRemovedPromise, systemFactionHistoriesAddedPromise])
+
+    return { processed: true, processingMessages: processingMessages }
   }
 
   /**
