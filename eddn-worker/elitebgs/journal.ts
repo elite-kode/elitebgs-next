@@ -118,7 +118,7 @@ export class Journal {
         },
       )
 
-      return { system, processed: true, processingMessages: [`System ${message.StarSystem} created.`] }
+      return { system, processed: true, processingMessages: ['System created.'] }
     }
 
     if (message.StarSystem !== system.starSystem) {
@@ -142,7 +142,7 @@ export class Journal {
       }
     }
 
-    return { system, processed: true, processingMessages: [`System updated.`] }
+    return { system, processed: true, processingMessages: ['System updated.'] }
   }
 
   /**
@@ -204,7 +204,7 @@ export class Journal {
       currentSystemStatus.systemEconomy === message.SystemEconomy &&
       currentSystemStatus.systemSecondEconomy === message.SystemSecondEconomy
     ) {
-      return { processed: false, processingMessages: [`Message is the same as the current record.`] }
+      return { processed: false, processingMessages: ['Message is the same as the current system record.'] }
     }
 
     // Get the faction data of the system faction.
@@ -219,7 +219,7 @@ export class Journal {
       // If the message timestamp is older than the start of the latest record, or older than the end of the latest
       // record, skip processing.
       if (message.timestamp < systemHistories[0].validFrom || message.timestamp < systemHistories[0].validTo) {
-        return { processed: false, processingMessages: [`Message is older than the latest record.`] }
+        return { processed: false, processingMessages: ['Message is older than the latest record.'] }
       }
 
       // If the system data matches all values for any data in the last 48 hours, skip processing.
@@ -236,7 +236,7 @@ export class Journal {
             history.systemFactionState === message.SystemFaction.FactionState,
         )
       ) {
-        return { processed: false, processingMessages: [`Message is probably cached.`] }
+        return { processed: false, processingMessages: ['Message is probably cached.'] }
       }
     }
 
@@ -265,7 +265,7 @@ export class Journal {
       { transaction },
     )
 
-    return { processed: true, processingMessages: [`System history created.`] }
+    return { processed: true, processingMessages: ['System history created.'] }
   }
 
   /**

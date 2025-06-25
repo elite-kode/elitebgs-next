@@ -21,6 +21,7 @@ export function ActiveStatesInit(sequelize: Sequelize) {
       },
       systemFactionId: {
         type: DataTypes.UUID,
+        allowNull: false,
       },
       state: {
         type: DataTypes.STRING,
