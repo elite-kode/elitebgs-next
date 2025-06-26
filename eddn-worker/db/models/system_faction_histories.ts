@@ -1,4 +1,11 @@
-import type { CreationOptional, ForeignKey, InferAttributes, InferCreationAttributes, NonAttribute } from 'sequelize'
+import type {
+  Association,
+  CreationOptional,
+  ForeignKey,
+  InferAttributes,
+  InferCreationAttributes,
+  NonAttribute,
+} from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import { Systems } from './systems.ts'
 import { Factions } from './factions.ts'
@@ -6,7 +13,10 @@ import { ActiveStates } from './active_states.ts'
 import { PendingStates } from './pending_states.ts'
 import { RecoveringStates } from './recovering_states.ts'
 
-export class SystemFactions extends Model<InferAttributes<SystemFactions>, InferCreationAttributes<SystemFactions>> {
+export class SystemFactionHistories extends Model<
+  InferAttributes<SystemFactionHistories>,
+  InferCreationAttributes<SystemFactionHistories>
+> {
   declare id: CreationOptional<string>
   declare systemId: ForeignKey<Systems['id']>
   declare factionId: ForeignKey<Factions['id']>
@@ -22,10 +32,14 @@ export class SystemFactions extends Model<InferAttributes<SystemFactions>, Infer
   declare ActiveStates?: NonAttribute<ActiveStates[]>
   declare PendingStates?: NonAttribute<PendingStates[]>
   declare RecoveringStates?: NonAttribute<RecoveringStates[]>
+
+  declare static associations: {
+    ActiveStates: Association<SystemFactionHistories, ActiveStates>
+  }
 }
 
-export function SystemFactionsInit(sequelize: Sequelize) {
-  SystemFactions.init(
+export function SystemFactionHistoriesInit(sequelize: Sequelize) {
+  SystemFactionHistories.init(
     {
       id: {
         type: DataTypes.UUID,
@@ -67,6 +81,6 @@ export function SystemFactionsInit(sequelize: Sequelize) {
         allowNull: false,
       },
     },
-    { sequelize, tableName: 'system_factions', underscored: true },
+    { sequelize, tableName: 'system_faction_histories', underscored: true },
   )
 }

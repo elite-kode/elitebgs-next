@@ -1,25 +1,16 @@
 import type {
   CreationOptional,
+  HasManyCreateAssociationMixin,
+  HasManyGetAssociationsMixin,
   InferAttributes,
   InferCreationAttributes,
   NonAttribute,
-  HasManyGetAssociationsMixin,
-  HasManyAddAssociationMixin,
-  HasManyAddAssociationsMixin,
-  HasManySetAssociationsMixin,
-  HasManyRemoveAssociationMixin,
-  HasManyRemoveAssociationsMixin,
-  HasManyHasAssociationMixin,
-  HasManyHasAssociationsMixin,
-  HasManyCountAssociationsMixin,
-  HasManyCreateAssociationMixin,
-  Association,
 } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import { type PointWCrs } from '@elitebgs/types/geoJson.ts'
 import { SystemAliases } from './system_aliases.ts'
 import { SystemHistories } from './system_histories.ts'
-import { SystemFactions } from './system_factions.ts'
+import { SystemFactionHistories } from './system_faction_histories.ts'
 
 export class Systems extends Model<
   InferAttributes<Systems, { omit: 'SystemAliases' }>,
@@ -35,28 +26,13 @@ export class Systems extends Model<
   declare updatedAt: CreationOptional<Date>
 
   declare SystemAliases?: NonAttribute<SystemAliases[]>
-  declare getSystemAliases: HasManyGetAssociationsMixin<SystemAliases>
-  declare addSystemAlias: HasManyAddAssociationMixin<SystemAliases, string>
-  declare addSystemAliases: HasManyAddAssociationsMixin<SystemAliases, string>
-  declare setSystemAliases: HasManySetAssociationsMixin<SystemAliases, string>
-  declare removeSystemAlias: HasManyRemoveAssociationMixin<SystemAliases, string>
-  declare removeSystemAliases: HasManyRemoveAssociationsMixin<SystemAliases, string>
-  declare hasSystemAlias: HasManyHasAssociationMixin<SystemAliases, string>
-  declare hasSystemAliases: HasManyHasAssociationsMixin<SystemAliases, string>
-  declare countSystemAliases: HasManyCountAssociationsMixin
   declare createSystemAlias: HasManyCreateAssociationMixin<SystemAliases, 'systemId'>
 
-  declare SystemHistories?: NonAttribute<SystemHistories[]>
   declare getSystemHistories: HasManyGetAssociationsMixin<SystemHistories>
   declare createSystemHistory: HasManyCreateAssociationMixin<SystemHistories, 'systemId'>
 
-  declare SystemFactions?: NonAttribute<SystemFactions[]>
-
-  declare static associations: {
-    SystemAliases: Association<Systems, SystemAliases>
-    SystemHistory: Association<Systems, SystemHistories>
-    SystemFactions: Association<Systems, SystemFactions>
-  }
+  declare getSystemFactionHistories: HasManyGetAssociationsMixin<SystemFactionHistories>
+  declare createSystemFactionHistory: HasManyCreateAssociationMixin<SystemFactionHistories, 'systemId'>
 }
 
 export function SystemsInit(sequelize: Sequelize) {

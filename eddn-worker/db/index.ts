@@ -4,7 +4,7 @@ import { Systems, SystemsInit } from './models/systems.ts'
 import { SystemAliases, SystemAliasesInit } from './models/system_aliases.ts'
 import { SystemHistories, SystemHistoriesInit } from './models/system_histories.ts'
 import { Factions, FactionsInit } from './models/factions.ts'
-import { SystemFactions, SystemFactionsInit } from './models/system_factions.ts'
+import { SystemFactionHistories, SystemFactionHistoriesInit } from './models/system_faction_histories.ts'
 import { ActiveStates, ActiveStatesInit } from './models/active_states.ts'
 import { PendingStates, PendingStatesInit } from './models/pending_states.ts'
 import { RecoveringStates, RecoveringStatesInit } from './models/recovering_states.ts'
@@ -57,7 +57,7 @@ export class DB {
     SystemAliasesInit(this.sequelize)
     SystemHistoriesInit(this.sequelize)
     FactionsInit(this.sequelize)
-    SystemFactionsInit(this.sequelize)
+    SystemFactionHistoriesInit(this.sequelize)
     ActiveStatesInit(this.sequelize)
     PendingStatesInit(this.sequelize)
     RecoveringStatesInit(this.sequelize)
@@ -72,29 +72,30 @@ export class DB {
     })
     SystemHistories.belongsTo(Systems)
 
-    Systems.belongsToMany(Factions, {
-      through: SystemFactions,
+    Systems.hasMany(SystemFactionHistories, {
       foreignKey: 'systemId',
     })
-    Factions.belongsToMany(Systems, {
-      through: SystemFactions,
+    SystemFactionHistories.belongsTo(Systems)
+
+    Factions.hasMany(SystemFactionHistories, {
       foreignKey: 'factionId',
     })
+    SystemFactionHistories.belongsTo(Factions)
 
-    SystemFactions.hasMany(ActiveStates, {
+    SystemFactionHistories.hasMany(ActiveStates, {
       foreignKey: 'systemFactionId',
     })
-    ActiveStates.belongsTo(SystemFactions)
+    ActiveStates.belongsTo(SystemFactionHistories)
 
-    SystemFactions.hasMany(PendingStates, {
+    SystemFactionHistories.hasMany(PendingStates, {
       foreignKey: 'systemFactionId',
     })
-    PendingStates.belongsTo(SystemFactions)
+    PendingStates.belongsTo(SystemFactionHistories)
 
-    SystemFactions.hasMany(RecoveringStates, {
+    SystemFactionHistories.hasMany(RecoveringStates, {
       foreignKey: 'systemFactionId',
     })
-    RecoveringStates.belongsTo(SystemFactions)
+    RecoveringStates.belongsTo(SystemFactionHistories)
   }
 
   private async sync() {

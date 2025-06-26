@@ -1,11 +1,11 @@
 import type { CreationOptional, InferAttributes, InferCreationAttributes, ForeignKey } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
-import { SystemFactions } from './system_factions.ts'
+import { SystemFactionHistories } from './system_faction_histories.ts'
 
 export class ActiveStates extends Model<InferAttributes<ActiveStates>, InferCreationAttributes<ActiveStates>> {
   declare id: CreationOptional<string>
   declare state: string
-  declare systemFactionId: ForeignKey<SystemFactions['id']>
+  declare systemFactionId: ForeignKey<SystemFactionHistories['id']>
 
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>

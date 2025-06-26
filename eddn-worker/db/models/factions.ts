@@ -1,11 +1,5 @@
-import type {
-  CreationOptional,
-  HasManyCreateAssociationMixin,
-  InferAttributes,
-  InferCreationAttributes,
-} from 'sequelize'
+import type { CreationOptional, InferAttributes, InferCreationAttributes } from 'sequelize'
 import { DataTypes, Model, Sequelize } from 'sequelize'
-import { SystemFactions } from './system_factions.ts'
 
 export class Factions extends Model<InferAttributes<Factions>, InferCreationAttributes<Factions>> {
   declare id: CreationOptional<string>
@@ -16,8 +10,6 @@ export class Factions extends Model<InferAttributes<Factions>, InferCreationAttr
 
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
-
-  declare createFactionHistory: HasManyCreateAssociationMixin<SystemFactions, 'factionId'>
 }
 
 export function FactionsInit(sequelize: Sequelize) {
