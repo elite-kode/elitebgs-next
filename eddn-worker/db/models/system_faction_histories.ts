@@ -1,7 +1,7 @@
 import type {
-  Association,
   CreationOptional,
   ForeignKey,
+  HasManyCreateAssociationMixin,
   InferAttributes,
   InferCreationAttributes,
   NonAttribute,
@@ -33,9 +33,9 @@ export class SystemFactionHistories extends Model<
   declare PendingStates?: NonAttribute<PendingStates[]>
   declare RecoveringStates?: NonAttribute<RecoveringStates[]>
 
-  declare static associations: {
-    ActiveStates: Association<SystemFactionHistories, ActiveStates>
-  }
+  declare createActiveState: HasManyCreateAssociationMixin<ActiveStates, 'systemFactionId'>
+  declare createPendingStates: HasManyCreateAssociationMixin<PendingStates, 'systemFactionId'>
+  declare createRecoveringStates: HasManyCreateAssociationMixin<RecoveringStates, 'systemFactionId'>
 }
 
 export function SystemFactionHistoriesInit(sequelize: Sequelize) {

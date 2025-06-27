@@ -56,7 +56,7 @@ export class Journal {
       }
     }
 
-    // messageBody = this.coerceMessage(messageBody)
+    this.coerceMessage(messageBody)
 
     try {
       await sequelize.transaction(async (transaction) => {
@@ -331,9 +331,8 @@ export class Journal {
 
     // Get the current status of all the factions currently in the system, determined by searching for records that
     // don't have a `validTo` entry.
-    const currentFactionsStatusPromise = SystemFactions.findAll({
+    const currentFactionsStatusPromise = system.getSystemFactionHistories({
       where: {
-        systemId: system.id,
         validTo: {
           [Op.is]: null,
         },
@@ -347,9 +346,8 @@ export class Journal {
     })
 
     // Get all the historical records for all the factions in teh system in the last 48 hours that have a `validTo`.
-    const factionHistoriesPromise = SystemFactions.findAll({
+    const factionHistoriesPromise = system.getSystemFactionHistories({
       where: {
-        systemId: system.id,
         validFrom: {
           [Op.gte]: new Date(timeNow - 172800000),
         },
@@ -408,9 +406,8 @@ export class Journal {
 
       // If no gaps are found, we need to check with the last record that went valid before 48 hours.
       if (!checkNewEntry) {
-        const factionHistoryMarginCheck = await SystemFactions.findAll({
+        const factionHistoryMarginCheck = await system.getSystemFactionHistories({
           where: {
-            systemId: system.id,
             factionId: factionRemovedId,
             validFrom: {
               [Op.lt]: new Date(timeNow - 172800000),
@@ -444,63 +441,136 @@ export class Journal {
         )
       })
 
-    // Filter all factions that were added, and check if the message faction is the same as any historical record.
+    // Filter all factions that were added, and check if the message faction is the same as any historical record. If
+    // not, create a new record.
     const systemFactionHistoriesAddedPromise = factions
       .filter((faction) => factionsAddedIds.includes(faction.id))
-      .map((faction) => {
+      .map(async (faction) => {
         // We get the current faction in the message.
         const factionInMessage = message.Factions.find(
           (messageFaction) => messageFaction.Name.toLowerCase() === faction.nameLower,
         )
 
-        const isCached = factionsHistories
-          .filter((history) => history.factionId === faction.id)
-          .some((history) => {
-            // In here each history record for this faction gets checked with the message data to verify if there are
-            // any records that match.
-            return (
-              history.influence === factionInMessage.Influence &&
-              history.happiness === factionInMessage.Happiness &&
-              history.factionState === factionInMessage.FactionState &&
-              isEqualWith(
-                history.ActiveStates,
-                factionInMessage.ActiveStates,
-                (historyElement: ActiveStates, messageElement: State) => {
-                  return historyElement.state === messageElement.State
-                },
-              ) &&
-              isEqualWith(
-                history.PendingStates,
-                factionInMessage.PendingStates,
-                (historyElement: PendingStates, messageElement: State) => {
-                  return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
-                },
-              ) &&
-              isEqualWith(
-                history.RecoveringStates,
-                factionInMessage.RecoveringStates,
-                (historyElement: RecoveringStates, messageElement: State) => {
-                  return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
-                },
-              )
-            )
-          })
-
-        if (!isCached) {
-          return faction.createFactionHistory({
-            systemId: system.id,
-            factionState: factionInMessage.FactionState,
-            influence: factionInMessage.Influence,
-            happiness: factionInMessage.Happiness,
-          })
+        const isCached = Journal.checkSystemFactionHistoryCache(factionsHistories, faction, factionInMessage)
+        if (isCached) {
+          return
         }
+
+        return Journal.createSystemFactionHistoryRecord(system, faction, factionInMessage, message.timestamp)
       })
 
-    // const systemFactionHistoriesUpdated =
+    const systemFactionHistoriesUpdatedPromise = factions
+      .filter((faction) => factionsMaybeUpdatedIds.includes(faction.id))
+      .map(async (faction) => {
+        // We get the current faction in the message.
+        const factionInMessage = message.Factions.find(
+          (messageFaction) => messageFaction.Name.toLowerCase() === faction.nameLower,
+        )
 
-    await Promise.all([systemFactionHistoriesRemovedPromise, systemFactionHistoriesAddedPromise])
+        const isCached = Journal.checkSystemFactionHistoryCache(factionsHistories, faction, factionInMessage)
+        if (isCached) {
+          return
+        }
+
+        const currentFactionStatus = currentFactionsStatus.find((status) => status.factionId === faction.id)
+        await currentFactionStatus.update(
+          {
+            validTo: message.timestamp,
+          },
+          { transaction },
+        )
+
+        return Journal.createSystemFactionHistoryRecord(system, faction, factionInMessage, message.timestamp)
+      })
+
+    await Promise.all([
+      systemFactionHistoriesRemovedPromise,
+      systemFactionHistoriesAddedPromise,
+      systemFactionHistoriesUpdatedPromise,
+    ])
 
     return { processed: true, processingMessages: processingMessages }
+  }
+
+  /**
+   * Check if the given faction in the message has data that is the same as any record for that faction in the last 48
+   * hours.
+   */
+  private static checkSystemFactionHistoryCache(
+    systemFactionHistories: SystemFactionHistories[],
+    faction: Factions,
+    factionInMessage: Faction,
+  ) {
+    return systemFactionHistories
+      .filter((history) => history.factionId === faction.id)
+      .some((history) => {
+        // In here each history record for this faction gets checked with the message data to verify if there are
+        // any records that match.
+        return (
+          history.influence === factionInMessage.Influence &&
+          history.happiness === factionInMessage.Happiness &&
+          history.factionState === factionInMessage.FactionState &&
+          isEqualWith(
+            history.ActiveStates,
+            factionInMessage.ActiveStates,
+            (historyElement: ActiveStates, messageElement: State) => {
+              return historyElement.state === messageElement.State
+            },
+          ) &&
+          isEqualWith(
+            history.PendingStates,
+            factionInMessage.PendingStates,
+            (historyElement: PendingStates, messageElement: State) => {
+              return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
+            },
+          ) &&
+          isEqualWith(
+            history.RecoveringStates,
+            factionInMessage.RecoveringStates,
+            (historyElement: RecoveringStates, messageElement: State) => {
+              return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
+            },
+          )
+        )
+      })
+  }
+
+  /**
+   * Handle the creation of a SystemFactionHistory record which involves creating the record and the various states
+   * together with it.
+   */
+  private static async createSystemFactionHistoryRecord(
+    system: Systems,
+    faction: Factions,
+    factionInMessage: Faction,
+    timestamp: Date,
+  ) {
+    const createdSystemFactionHistory = await system.createSystemFactionHistory({
+      factionId: faction.id,
+      factionState: factionInMessage.FactionState,
+      influence: factionInMessage.Influence,
+      happiness: factionInMessage.Happiness,
+      validFrom: timestamp,
+    })
+    const activeStatesPromise = factionInMessage.ActiveStates.map((activeState) => {
+      return createdSystemFactionHistory.createActiveState({
+        state: activeState.State,
+      })
+    })
+    const pendingStatesPromise = factionInMessage.PendingStates.map((pendingState) => {
+      return createdSystemFactionHistory.createPendingStates({
+        state: pendingState.State,
+        trend: pendingState.Trend,
+      })
+    })
+    const recoveringStatesPromise = factionInMessage.RecoveringStates.map((recoveringState) => {
+      return createdSystemFactionHistory.createRecoveringStates({
+        state: recoveringState.State,
+        trend: recoveringState.Trend,
+      })
+    })
+
+    return Promise.all(activeStatesPromise.concat(pendingStatesPromise).concat(recoveringStatesPromise))
   }
 
   /**
@@ -562,19 +632,10 @@ export class Journal {
     return errors
   }
 
-  // private static coerceMessage(message: FSDJump['message']): FSDJump['message'] {
-  //   if (!message.SystemFaction.FactionState) {
-  //     message.SystemFaction.FactionState = 'None'
-  //   }
-  //
-  //   if (!message.Population) {
-  //     message.Population = 0
-  //   }
-  //
-  //   if (!message.Conflicts) {
-  //     message.Conflicts = []
-  //   }
-  //
-  //   return message
-  // }
+  /** Fix certain issues that are expected in the incoming message. */
+  private static coerceMessage(message: FSDJump['message']) {
+    if (!message.SystemFaction.FactionState) {
+      message.SystemFaction.FactionState = 'None'
+    }
+  }
 }

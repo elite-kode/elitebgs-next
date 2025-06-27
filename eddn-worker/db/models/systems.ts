@@ -13,8 +13,8 @@ import { SystemHistories } from './system_histories.ts'
 import { SystemFactionHistories } from './system_faction_histories.ts'
 
 export class Systems extends Model<
-  InferAttributes<Systems, { omit: 'SystemAliases' }>,
-  InferCreationAttributes<Systems, { omit: 'SystemAliases' }>
+  InferAttributes<Systems>,
+  InferCreationAttributes<Systems>
 > {
   declare id: CreationOptional<string>
   declare starSystem: string
