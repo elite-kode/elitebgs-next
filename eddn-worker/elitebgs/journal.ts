@@ -1,14 +1,15 @@
-import type { EDDNBase, FSDJump, JournalMessage, State } from '@elitebgs/types/eddn.ts'
+import type { EDDNBase, Faction, FSDJump, JournalMessage, State } from '@elitebgs/types/eddn.ts'
 import { JournalEvents } from '@elitebgs/types/eddn.ts'
 import { Op, Sequelize, Transaction } from 'sequelize'
-import { difference, intersection, isEqualWith, uniq } from 'lodash'
+import { difference, intersection, isEqualWith, uniq } from 'lodash-es'
 import { Systems } from '../db/models/systems.ts'
 import { SystemAliases } from '../db/models/system_aliases.ts'
 import { Factions } from '../db/models/factions.ts'
-import { SystemFactions } from '../db/models/system_factions.ts'
 import { ActiveStates } from '../db/models/active_states.ts'
 import { RecoveringStates } from '../db/models/recovering_states.ts'
 import { PendingStates } from '../db/models/pending_states.ts'
+import { SystemFactionHistories } from '../db/models/system_faction_histories.ts'
+import { ProcessingMessages } from '../processing-messages.ts'
 
 export type TrackSystemResponse = {
   processed: boolean
@@ -36,7 +37,7 @@ export class Journal {
   static async trackSystem(message: JournalMessage, sequelize: Sequelize): Promise<TrackSystemResponse> {
     if (message.message.event !== JournalEvents.FSDJump && message.message.event !== JournalEvents.Location) {
       // Only track FSDJump and Location events.
-      return { processed: false, processingMessages: ['Not a FSDJump or Location event. Skipping processing.'] }
+      return { processed: false, processingMessages: [ProcessingMessages.EVENT_CHECK] }
     }
 
     const messageBody = (message as FSDJump).message
@@ -52,7 +53,7 @@ export class Journal {
     } catch (err) {
       return {
         processed: false,
-        processingMessages: [`Error occurred while validating message. Skipping processing. Error: ${err}`],
+        processingMessages: [ProcessingMessages.VALIDATION_ERROR(err)],
       }
     }
 
@@ -76,7 +77,7 @@ export class Journal {
           await this.ensureSystemHistory(messageBody, messageHeader, system, factions, transaction)
 
         const { processed: factionHistoriesProcessed, processingMessages: factionHistoriesProcessingMessages } =
-          await this.ensureFactionSystemHistory(messageBody, messageHeader, system, factions, transaction)
+          await this.ensureSystemFactionHistory(messageBody, messageHeader, system, factions, transaction)
 
         // If no errors occur, then the `processed` value is determined based on if at least 1 entity was processed.
         // And all the messages generated are also returned.
@@ -91,7 +92,7 @@ export class Journal {
     } catch (err) {
       return {
         processed: false,
-        processingMessages: [`Error occurred while in DB operation. Skipping processing. Error: ${err}`],
+        processingMessages: [ProcessingMessages.DB_ERROR(err)],
       }
     }
 
@@ -127,7 +128,7 @@ export class Journal {
         },
       )
 
-      return { system, processed: true, processingMessages: ['System created.'] }
+      return { system, processed: true, processingMessages: [ProcessingMessages.SYSTEM_CREATED] }
     }
 
     if (message.StarSystem !== system.starSystem) {
@@ -148,10 +149,12 @@ export class Journal {
           },
           { transaction },
         )
+
+        return { system, processed: true, processingMessages: [ProcessingMessages.SYSTEM_ALIAS_UPDATED] }
       }
     }
 
-    return { system, processed: true, processingMessages: ['System updated.'] }
+    return { system, processed: false, processingMessages: [ProcessingMessages.SYSTEM_NOT_UPDATED] }
   }
 
   /**
@@ -203,6 +206,14 @@ export class Journal {
     const currentSystemStatus = promiseSettled[0].at(0)
     const systemHistories = promiseSettled[1]
 
+    // Get the faction data of the system faction.
+    const systemFaction = factions.find((faction) => faction.nameLower === message.SystemFaction.Name.toLowerCase())
+
+    // If the `SystemFaction` is not found in the factions table, something is broken in the message and hence, reject.
+    if (!systemFaction) {
+      throw new Error(ProcessingMessages.SYSTEM_HISTORY_SYSTEM_FACTION_NOT_FOUND(message.SystemFaction.Name))
+    }
+
     // Check if the message contains the same data as the current state.
     if (
       currentSystemStatus &&
@@ -211,26 +222,24 @@ export class Journal {
       currentSystemStatus.systemAllegiance === message.SystemAllegiance &&
       currentSystemStatus.systemSecurity === message.SystemSecurity &&
       currentSystemStatus.systemEconomy === message.SystemEconomy &&
-      currentSystemStatus.systemSecondEconomy === message.SystemSecondEconomy
+      currentSystemStatus.systemSecondEconomy === message.SystemSecondEconomy &&
+      currentSystemStatus.systemFactionId === systemFaction.id &&
+      currentSystemStatus.systemFactionState === message.SystemFaction.FactionState
     ) {
-      return { processed: false, processingMessages: ['Message is the same as the current system record.'] }
+      return { processed: false, processingMessages: [ProcessingMessages.SYSTEM_HISTORY_NOT_UPDATED] }
     }
 
-    // Get the faction data of the system faction.
-    const systemFaction = factions.find((faction) => faction.nameLower === message.SystemFaction.Name.toLowerCase())
-
-    if (!systemFaction) {
-      throw new Error(`Unable to find the faction record for the faction ${message.SystemFaction.Name}.`)
+    // If the message timestamp is older than the start of the latest record, or older than the end of the latest
+    // record, skip processing.
+    if (
+      currentSystemStatus &&
+      (message.timestamp < currentSystemStatus.validFrom || message.timestamp < currentSystemStatus.validTo)
+    ) {
+      return { processed: false, processingMessages: [ProcessingMessages.SYSTEM_HISTORY_OLDER] }
     }
 
     // Run some checks on the message with the existing history to verify that it should be processed.
     if (systemHistories.length > 0) {
-      // If the message timestamp is older than the start of the latest record, or older than the end of the latest
-      // record, skip processing.
-      if (message.timestamp < systemHistories[0].validFrom || message.timestamp < systemHistories[0].validTo) {
-        return { processed: false, processingMessages: ['Message is older than the latest record.'] }
-      }
-
       // If the system data matches all values for any data in the last 48 hours, skip processing.
       if (
         systemHistories.some(
@@ -245,7 +254,7 @@ export class Journal {
             history.systemFactionState === message.SystemFaction.FactionState,
         )
       ) {
-        return { processed: false, processingMessages: ['Message is probably cached.'] }
+        return { processed: false, processingMessages: [ProcessingMessages.SYSTEM_HISTORY_CACHED] }
       }
     }
 
@@ -274,7 +283,7 @@ export class Journal {
       { transaction },
     )
 
-    return { processed: true, processingMessages: ['System history created.'] }
+    return { processed: true, processingMessages: [ProcessingMessages.SYSTEM_HISTORY_CREATED] }
   }
 
   /**
@@ -301,9 +310,19 @@ export class Journal {
               transaction,
             },
           )
+
+          return {
+            faction,
+            processed: true,
+            processingMessages: [ProcessingMessages.FACTION_CREATED(messageFaction.Name)],
+          }
         }
 
-        return { faction, processed: true, processingMessages: [`System ${message.StarSystem} created.`] }
+        return {
+          faction,
+          processed: false,
+          processingMessages: [ProcessingMessages.FACTION_NOT_UPDATED(messageFaction.Name)],
+        }
       }),
     )
 
@@ -315,7 +334,7 @@ export class Journal {
   }
 
   /** Get all the current faction history records and all the historical records for the last 48 hours. */
-  private static async ensureFactionSystemHistory(
+  private static async ensureSystemFactionHistory(
     message: FSDJump['message'],
     header: EDDNBase['header'],
     system: Systems,
@@ -422,7 +441,7 @@ export class Journal {
       }
 
       if (checkNewEntry) {
-        processingMessages.push(`Faction with id ${factionRemovedId} is probably cached.`)
+        processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_CACHED(factionRemovedId))
         continue
       }
 
@@ -432,13 +451,15 @@ export class Journal {
     // Filter all factions that were removed, and update the validTo for each of these records.
     const systemFactionHistoriesRemovedPromise = currentFactionsStatus
       .filter((status) => filteredFactionRemovedIds.includes(status.factionId))
-      .map((factionHistory) => {
-        return factionHistory.update(
+      .map(async (factionHistory) => {
+        await factionHistory.update(
           {
             validTo: message.timestamp,
           },
           { transaction },
         )
+        processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_CLOSED(factionHistory.factionId))
+        return true
       })
 
     // Filter all factions that were added, and check if the message faction is the same as any historical record. If
@@ -453,10 +474,13 @@ export class Journal {
 
         const isCached = Journal.checkSystemFactionHistoryCache(factionsHistories, faction, factionInMessage)
         if (isCached) {
-          return
+          processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_CACHED(faction.name))
+          return false
         }
 
-        return Journal.createSystemFactionHistoryRecord(system, faction, factionInMessage, message.timestamp)
+        await Journal.createSystemFactionHistoryRecord(system, faction, factionInMessage, message.timestamp)
+        processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_CREATED(factionInMessage.Name))
+        return true
       })
 
     const systemFactionHistoriesUpdatedPromise = factions
@@ -467,12 +491,28 @@ export class Journal {
           (messageFaction) => messageFaction.Name.toLowerCase() === faction.nameLower,
         )
 
-        const isCached = Journal.checkSystemFactionHistoryCache(factionsHistories, faction, factionInMessage)
-        if (isCached) {
-          return
+        const currentFactionStatus = currentFactionsStatus.find((status) => status.factionId === faction.id)
+
+        // If the message timestamp is older than the start of the latest record, or older than the end of the latest
+        // record, skip processing.
+        if (message.timestamp < currentFactionStatus.validFrom || message.timestamp < currentFactionStatus.validTo) {
+          processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_OLDER(factionInMessage.Name))
+          return false
         }
 
-        const currentFactionStatus = currentFactionsStatus.find((status) => status.factionId === faction.id)
+        // Check if the message contains the same data as the current state.
+        if (!Journal.checkSystemFactionHistoryEquality(currentFactionStatus, factionInMessage)) {
+          processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_NOT_UPDATED(factionInMessage.Name))
+          return false
+        }
+
+        // If the faction data matches all values for any data in the last 48 hours, skip processing.
+        const isCached = Journal.checkSystemFactionHistoryCache(factionsHistories, faction, factionInMessage)
+        if (isCached) {
+          processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_CACHED(faction.name))
+          return false
+        }
+
         await currentFactionStatus.update(
           {
             validTo: message.timestamp,
@@ -480,16 +520,20 @@ export class Journal {
           { transaction },
         )
 
-        return Journal.createSystemFactionHistoryRecord(system, faction, factionInMessage, message.timestamp)
+        await Journal.createSystemFactionHistoryRecord(system, faction, factionInMessage, message.timestamp)
+        processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_CREATED(factionInMessage.Name))
+        return true
       })
 
-    await Promise.all([
-      systemFactionHistoriesRemovedPromise,
-      systemFactionHistoriesAddedPromise,
-      systemFactionHistoriesUpdatedPromise,
-    ])
+    const promiseResolutions = await Promise.all(
+      systemFactionHistoriesRemovedPromise
+        .concat(systemFactionHistoriesAddedPromise)
+        .concat(systemFactionHistoriesUpdatedPromise),
+    )
 
-    return { processed: true, processingMessages: processingMessages }
+    const processed = promiseResolutions.some((resolution) => resolution)
+
+    return { processed, processingMessages: processingMessages }
   }
 
   /**
@@ -506,33 +550,33 @@ export class Journal {
       .some((history) => {
         // In here each history record for this faction gets checked with the message data to verify if there are
         // any records that match.
-        return (
-          history.influence === factionInMessage.Influence &&
-          history.happiness === factionInMessage.Happiness &&
-          history.factionState === factionInMessage.FactionState &&
-          isEqualWith(
-            history.ActiveStates,
-            factionInMessage.ActiveStates,
-            (historyElement: ActiveStates, messageElement: State) => {
-              return historyElement.state === messageElement.State
-            },
-          ) &&
-          isEqualWith(
-            history.PendingStates,
-            factionInMessage.PendingStates,
-            (historyElement: PendingStates, messageElement: State) => {
-              return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
-            },
-          ) &&
-          isEqualWith(
-            history.RecoveringStates,
-            factionInMessage.RecoveringStates,
-            (historyElement: RecoveringStates, messageElement: State) => {
-              return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
-            },
-          )
-        )
+        return Journal.checkSystemFactionHistoryEquality(history, factionInMessage)
       })
+  }
+
+  private static checkSystemFactionHistoryEquality(record: SystemFactionHistories, message: Faction): boolean {
+    return (
+      record.influence === message.Influence &&
+      record.happiness === message.Happiness &&
+      record.factionState === message.FactionState &&
+      isEqualWith(record.ActiveStates, message.ActiveStates, (historyElement: ActiveStates, messageElement: State) => {
+        return historyElement.state === messageElement.State
+      }) &&
+      isEqualWith(
+        record.PendingStates,
+        message.PendingStates,
+        (recordElement: PendingStates, messageElement: State) => {
+          return recordElement.state === messageElement.State && recordElement.trend === messageElement.Trend
+        },
+      ) &&
+      isEqualWith(
+        record.RecoveringStates,
+        message.RecoveringStates,
+        (historyElement: RecoveringStates, messageElement: State) => {
+          return historyElement.state === messageElement.State && historyElement.trend === messageElement.Trend
+        },
+      )
+    )
   }
 
   /**
