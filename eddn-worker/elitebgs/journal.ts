@@ -203,7 +203,7 @@ export class Journal {
       transaction,
     })
 
-    const promiseSettled = await Promise.all([currentSystemStatusPromise, systemHistoriesPromise])
+    const promiseSettled = await Journal.PromiseSettle([currentSystemStatusPromise, systemHistoriesPromise])
     const currentSystemStatus = promiseSettled[0].at(0)
     const systemHistories = promiseSettled[1]
 
@@ -271,7 +271,7 @@ export class Journal {
    * created.
    */
   private static async ensureFactions(message: FSDJump['message'], transaction: Transaction) {
-    const factionPromises = await Promise.all(
+    const factionPromises = await Journal.PromiseSettle(
       message.Factions.map(async (messageFaction) => {
         let faction = await Factions.findOne({
           where: { nameLower: messageFaction.Name.toLowerCase() },
@@ -362,7 +362,7 @@ export class Journal {
       transaction,
     })
 
-    const promiseSettled = await Promise.all([currentFactionsStatusPromise, factionHistoriesPromise])
+    const promiseSettled = await Journal.PromiseSettle([currentFactionsStatusPromise, factionHistoriesPromise])
     const currentFactionsStatus = promiseSettled[0]
     const factionsHistories = promiseSettled[1]
 
@@ -527,13 +527,13 @@ export class Journal {
         )
       })
 
-      await Promise.all(activeStatesPromise.concat(pendingStatesPromise).concat(recoveringStatesPromise))
+      await Journal.PromiseSettle(activeStatesPromise.concat(pendingStatesPromise).concat(recoveringStatesPromise))
 
       processingMessages.push(ProcessingMessages.SYSTEM_FACTION_HISTORY_CREATED(factionInMessage.Name))
       return true
     })
 
-    const promiseResolutions = await Promise.all(
+    const promiseResolutions = await Journal.PromiseSettle(
       systemFactionHistoriesRemovedPromise.concat(systemFactionHistoriesUpdatedPromise),
     )
 
@@ -650,5 +650,14 @@ export class Journal {
     if (!message.SystemFaction.FactionState) {
       message.SystemFaction.FactionState = 'None'
     }
+  }
+
+  private static async PromiseSettle<T>(values: Promise<T>[]): Promise<T[]> {
+    const promiseSettled = await Promise.allSettled(values)
+    const rejects = promiseSettled.filter((promise) => promise.status === 'rejected')
+    if (rejects.length > 0) {
+      throw rejects.map((promise) => promise.reason)
+    }
+    return promiseSettled.map((promise) => promise.status === 'fulfilled' && promise.value)
   }
 }
