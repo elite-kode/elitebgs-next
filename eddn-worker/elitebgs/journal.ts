@@ -500,32 +500,38 @@ export class Journal {
         },
         { transaction },
       )
-      const activeStatesPromise = factionInMessage.ActiveStates.map((activeState) => {
-        return createdSystemFactionHistory.createActiveState(
-          {
-            state: activeState.State,
-          },
-          { transaction },
-        )
-      })
-      const pendingStatesPromise = factionInMessage.PendingStates.map((pendingState) => {
-        return createdSystemFactionHistory.createPendingStates(
-          {
-            state: pendingState.State,
-            trend: pendingState.Trend,
-          },
-          { transaction },
-        )
-      })
-      const recoveringStatesPromise = factionInMessage.RecoveringStates.map((recoveringState) => {
-        return createdSystemFactionHistory.createRecoveringStates(
-          {
-            state: recoveringState.State,
-            trend: recoveringState.Trend,
-          },
-          { transaction },
-        )
-      })
+      const activeStatesPromise = factionInMessage.ActiveStates
+        ? factionInMessage.ActiveStates.map((activeState) => {
+            return createdSystemFactionHistory.createActiveState(
+              {
+                state: activeState.State,
+              },
+              { transaction },
+            )
+          })
+        : []
+      const pendingStatesPromise = factionInMessage.PendingStates
+        ? factionInMessage.PendingStates.map((pendingState) => {
+            return createdSystemFactionHistory.createPendingState(
+              {
+                state: pendingState.State,
+                trend: pendingState.Trend,
+              },
+              { transaction },
+            )
+          })
+        : []
+      const recoveringStatesPromise = factionInMessage.RecoveringStates
+        ? factionInMessage.RecoveringStates.map((recoveringState) => {
+            return createdSystemFactionHistory.createRecoveringState(
+              {
+                state: recoveringState.State,
+                trend: recoveringState.Trend,
+              },
+              { transaction },
+            )
+          })
+        : []
 
       await Journal.PromiseSettle(activeStatesPromise.concat(pendingStatesPromise).concat(recoveringStatesPromise))
 

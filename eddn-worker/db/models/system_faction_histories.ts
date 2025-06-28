@@ -34,8 +34,8 @@ export class SystemFactionHistories extends Model<
   declare RecoveringStates?: NonAttribute<RecoveringStates[]>
 
   declare createActiveState: HasManyCreateAssociationMixin<ActiveStates, 'systemFactionId'>
-  declare createPendingStates: HasManyCreateAssociationMixin<PendingStates, 'systemFactionId'>
-  declare createRecoveringStates: HasManyCreateAssociationMixin<RecoveringStates, 'systemFactionId'>
+  declare createPendingState: HasManyCreateAssociationMixin<PendingStates, 'systemFactionId'>
+  declare createRecoveringState: HasManyCreateAssociationMixin<RecoveringStates, 'systemFactionId'>
 }
 
 export function SystemFactionHistoriesInit(sequelize: Sequelize) {
