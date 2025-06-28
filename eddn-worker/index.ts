@@ -8,3 +8,7 @@ const db = new DB()
 await db.connect()
 
 new App(db.sequelize)
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error(`Unhandled promise rejection ${promise} for reason ${reason}`)
+})
