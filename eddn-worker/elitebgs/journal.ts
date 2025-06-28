@@ -490,29 +490,41 @@ export class Journal {
         )
       }
 
-      const createdSystemFactionHistory = await system.createSystemFactionHistory({
-        factionId: faction.id,
-        factionState: factionInMessage.FactionState,
-        influence: factionInMessage.Influence,
-        happiness: factionInMessage.Happiness,
-        validFrom: message.timestamp,
-      })
+      const createdSystemFactionHistory = await system.createSystemFactionHistory(
+        {
+          factionId: faction.id,
+          factionState: factionInMessage.FactionState,
+          influence: factionInMessage.Influence,
+          happiness: factionInMessage.Happiness,
+          validFrom: message.timestamp,
+        },
+        { transaction },
+      )
       const activeStatesPromise = factionInMessage.ActiveStates.map((activeState) => {
-        return createdSystemFactionHistory.createActiveState({
-          state: activeState.State,
-        })
+        return createdSystemFactionHistory.createActiveState(
+          {
+            state: activeState.State,
+          },
+          { transaction },
+        )
       })
       const pendingStatesPromise = factionInMessage.PendingStates.map((pendingState) => {
-        return createdSystemFactionHistory.createPendingStates({
-          state: pendingState.State,
-          trend: pendingState.Trend,
-        })
+        return createdSystemFactionHistory.createPendingStates(
+          {
+            state: pendingState.State,
+            trend: pendingState.Trend,
+          },
+          { transaction },
+        )
       })
       const recoveringStatesPromise = factionInMessage.RecoveringStates.map((recoveringState) => {
-        return createdSystemFactionHistory.createRecoveringStates({
-          state: recoveringState.State,
-          trend: recoveringState.Trend,
-        })
+        return createdSystemFactionHistory.createRecoveringStates(
+          {
+            state: recoveringState.State,
+            trend: recoveringState.Trend,
+          },
+          { transaction },
+        )
       })
 
       await Promise.all(activeStatesPromise.concat(pendingStatesPromise).concat(recoveringStatesPromise))
