@@ -61,7 +61,7 @@ export class Journal {
     this.coerceMessage(messageBody)
 
     try {
-      await sequelize.transaction(async (transaction) => {
+      const result = await sequelize.transaction(async (transaction) => {
         const {
           factions,
           processed: factionProcessed,
@@ -90,6 +90,8 @@ export class Journal {
             .concat(factionHistoriesProcessingMessages),
         }
       })
+
+      return result
     } catch (err) {
       return {
         processed: false,
@@ -98,8 +100,6 @@ export class Journal {
           : [ProcessingMessages.DB_ERROR(err)],
       }
     }
-
-    return { processed: true, processingMessages: [] }
   }
 
   /**
