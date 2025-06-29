@@ -93,7 +93,9 @@ export class Journal {
     } catch (err) {
       return {
         processed: false,
-        processingMessages: [ProcessingMessages.DB_ERROR(err)],
+        processingMessages: Array.isArray(err)
+          ? err.map((element) => ProcessingMessages.DB_ERROR(element))
+          : [ProcessingMessages.DB_ERROR(err)],
       }
     }
 
